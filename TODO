@@ -1,4 +1,0 @@
-- [ ] Render function (recursive)
-- [X] Refactor to remove @constCast usages
-- [ ] Fix `html` props
-- [ ] Use Closure syntax to simplify tag functions
