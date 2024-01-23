@@ -264,6 +264,12 @@ pub const BaseTag = struct {
     props: ?Props = null,
 
     pub fn render(self: BaseTag, buf: *std.ArrayList(u8), compact: bool) anyerror!void {
+        if (std.mem.eql(u8, self.tag, "html")) {
+            try buf.appendSlice("<!DOCTYPE html>");
+            if (!compact) {
+                try buf.appendSlice("\n");
+            }
+        }
         try buf.appendSlice("<");
         try buf.appendSlice(self.tag);
         if (self.props) |props| {

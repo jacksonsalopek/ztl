@@ -66,7 +66,20 @@ test "basic render" {
 
     try markup.render(&buf, true);
     const renderedText = try buf.toOwnedSlice();
-    try std.testing.expectEqualStrings("<html lang=\"en-US\"><head></head><body></body></html>", renderedText);
+    try std.testing.expectEqualStrings("<!DOCTYPE html><html lang=\"en-US\"><head></head><body></body></html>", renderedText);
+    alloc.free(renderedText);
+}
+
+test "html partial render" {
+    const markup = p(null, &[_]El{Text("test")});
+
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+
+    try markup.render(&buf, true);
+    const renderedText = try buf.toOwnedSlice();
+    try std.testing.expectEqualStrings("<p>test</p>", renderedText);
     alloc.free(renderedText);
 }
 
@@ -123,6 +136,7 @@ test "dynamic render" {
     const renderedText = try buf.toOwnedSlice();
 
     try std.testing.expectEqualStrings(
+        \\<!DOCTYPE html>
         \\<html lang="en-US">
         \\<head>
         \\</head>
