@@ -187,148 +187,123 @@ pub const BaseTag = struct {
         try buf.appendSlice(self.tag);
         try buf.appendSlice(">");
     }
-};
 
-const TagFn = fn (comptime Children) type;
+    pub fn make(self: BaseTag) El {
+        return El{ .base = self };
+    }
+};
 
 pub fn Text(content: Str) El {
     return El{ .text = @constCast(content) };
 }
 
-pub fn Element(comptime tag: Str) TagFn {
-    const Closure = struct {
-        fn tagFn(comptime children: Children) type {
-            return struct {
-                tag: Str = tag,
-                children: Children = children,
-            };
-        }
-    };
-    return Closure.tagFn;
-}
-
-fn baseMake(base: BaseTag) El {
-    return El{ .base = base };
-}
-
-fn baseElementConfig(comptime tag: Str, comptime props: ?Props, comptime children: Children) type {
-    const el = Element(tag)(children){};
-    const base = BaseTag{ .tag = el.tag, .children = el.children, .props = props };
-    return struct {
-        const Self = @This();
-        base: BaseTag = base,
-        pub fn make(self: Self) El {
-            return baseMake(self.base);
-        }
-    };
+fn baseElementConfig(tag: Str, props: ?Props, children: Children) BaseTag {
+    return BaseTag{ .tag = tag, .children = children, .props = props };
 }
 
 // @TODO: add more elements
 
-pub fn html(comptime props: ?Props, comptime children: Children) type {
-    const el = Element("html")(children){};
-    return struct {
-        base: BaseTag = BaseTag{ .tag = el.tag, .children = el.children, .props = props },
-    };
+pub fn html(props: ?Props, children: Children) BaseTag {
+    return baseElementConfig("html", props, children);
 }
 
-pub fn b(comptime props: ?Props, comptime children: Children) type {
+pub fn b(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("b", props, children);
 }
 
-pub fn body(comptime props: ?Props, comptime children: Children) type {
+pub fn body(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("body", props, children);
 }
 
-pub fn div(comptime props: ?Props, comptime children: Children) type {
+pub fn div(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("div", props, children);
 }
 
-pub fn h1(comptime props: ?Props, comptime children: Children) type {
+pub fn h1(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("h1", props, children);
 }
 
-pub fn h2(comptime props: ?Props, comptime children: Children) type {
+pub fn h2(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("h2", props, children);
 }
 
-pub fn h3(comptime props: ?Props, comptime children: Children) type {
+pub fn h3(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("h3", props, children);
 }
 
-pub fn h4(comptime props: ?Props, comptime children: Children) type {
+pub fn h4(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("h4", props, children);
 }
 
-pub fn h5(comptime props: ?Props, comptime children: Children) type {
+pub fn h5(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("h5", props, children);
 }
 
-pub fn h6(comptime props: ?Props, comptime children: Children) type {
+pub fn h6(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("h6", props, children);
 }
 
-pub fn head(comptime props: ?Props, comptime children: Children) type {
+pub fn head(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("head", props, children);
 }
 
-pub fn i(comptime props: ?Props, comptime children: Children) type {
+pub fn i(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("i", props, children);
 }
 
-pub fn img(comptime props: ?Props, comptime children: Children) type {
+pub fn img(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("img", props, children);
 }
 
-pub fn li(comptime props: ?Props, comptime children: Children) type {
+pub fn li(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("li", props, children);
 }
 
-pub fn link(comptime props: ?Props, comptime children: Children) type {
+pub fn link(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("link", props, children);
 }
 
-pub fn meta(comptime props: ?Props, comptime children: Children) type {
+pub fn meta(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("meta", props, children);
 }
 
-pub fn ol(comptime props: ?Props, comptime children: Children) type {
+pub fn ol(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("ol", props, children);
 }
 
-pub fn p(comptime props: ?Props, comptime children: Children) type {
+pub fn p(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("p", props, children);
 }
 
-pub fn script(comptime props: ?Props, comptime children: Children) type {
+pub fn script(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("script", props, children);
 }
 
-pub fn span(comptime props: ?Props, comptime children: Children) type {
+pub fn span(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("span", props, children);
 }
 
-pub fn table(comptime props: ?Props, comptime children: Children) type {
+pub fn table(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("table", props, children);
 }
 
-pub fn td(comptime props: ?Props, comptime children: Children) type {
+pub fn td(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("td", props, children);
 }
 
-pub fn th(comptime props: ?Props, comptime children: Children) type {
+pub fn th(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("th", props, children);
 }
 
-pub fn tr(comptime props: ?Props, comptime children: Children) type {
+pub fn tr(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("tr", props, children);
 }
 
-pub fn ul(comptime props: ?Props, comptime children: Children) type {
+pub fn ul(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("ul", props, children);
 }
 
-const header = (head(null, null){}).make();
+const header = head(null, null).make();
 // minimal example
 pub const example = html(Props{
     .lang = "en-US",
@@ -338,14 +313,14 @@ pub const example = html(Props{
     // must pass null if element has no props/children
     // must also call make, which standardizes element structs
     header,
-    (body(Props{
+    body(Props{
         .class = "body",
     }, &[_]El{
-        (div(Props{
+        div(Props{
             .id = "app",
             .class = "test",
         }, &[_]El{
             Text("test content"),
-        }){}).make(),
-    }){}).make(),
-}){};
+        }).make(),
+    }).make(),
+});
