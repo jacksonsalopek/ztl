@@ -15,9 +15,9 @@ pub const El = union(enum) {
         };
     }
 
-    pub fn render(self: El, buf: *std.ArrayList(u8)) !void {
+    pub fn render(self: El, buf: *std.ArrayList(u8), compact: bool) !void {
         switch (self) {
-            .base => |base| try base.render(buf),
+            .base => |base| try base.render(buf, compact),
             .text => |text| try buf.appendSlice(text),
         }
     }
@@ -192,6 +192,11 @@ pub const Props = struct {
             try buf.appendSlice(disabled);
             try buf.appendSlice("\"");
         }
+        if (self.height) |height| {
+            try buf.appendSlice(" height=\"");
+            try buf.appendSlice(height);
+            try buf.appendSlice("\"");
+        }
         if (self.href) |href| {
             try buf.appendSlice(" href=\"");
             try buf.appendSlice(href);
@@ -210,9 +215,24 @@ pub const Props = struct {
             try buf.appendSlice(lang);
             try buf.appendSlice("\"");
         }
+        if (self.rel) |rel| {
+            try buf.appendSlice(" rel=\"");
+            try buf.appendSlice(rel);
+            try buf.appendSlice("\"");
+        }
+        if (self.selected) |selected| {
+            try buf.appendSlice(" selected=\"");
+            try buf.appendSlice(selected);
+            try buf.appendSlice("\"");
+        }
         if (self.src) |src| {
             try buf.appendSlice(" src=\"");
             try buf.appendSlice(src);
+            try buf.appendSlice("\"");
+        }
+        if (self.style) |style| {
+            try buf.appendSlice(" style=\"");
+            try buf.appendSlice(style);
             try buf.appendSlice("\"");
         }
         if (self.title) |title| {
@@ -225,6 +245,16 @@ pub const Props = struct {
             try buf.appendSlice(t);
             try buf.appendSlice("\"");
         }
+        if (self.value) |value| {
+            try buf.appendSlice(" value=\"");
+            try buf.appendSlice(value);
+            try buf.appendSlice("\"");
+        }
+        if (self.width) |width| {
+            try buf.appendSlice(" width=\"");
+            try buf.appendSlice(width);
+            try buf.appendSlice("\"");
+        }
     }
 };
 
@@ -233,23 +263,29 @@ pub const BaseTag = struct {
     children: Children,
     props: ?Props = null,
 
-    pub fn render(self: BaseTag, buf: *std.ArrayList(u8)) anyerror!void {
+    pub fn render(self: BaseTag, buf: *std.ArrayList(u8), compact: bool) anyerror!void {
         try buf.appendSlice("<");
         try buf.appendSlice(self.tag);
         if (self.props) |props| {
             try props.render(buf);
         }
         try buf.appendSlice(">");
+        if (!compact) {
+            try buf.appendSlice("\n");
+        }
 
         if (self.children) |children| {
             for (children) |child| {
-                try child.render(buf);
+                try child.render(buf, compact);
             }
         }
 
         try buf.appendSlice("</");
         try buf.appendSlice(self.tag);
         try buf.appendSlice(">");
+        if (!compact) {
+            try buf.appendSlice("\n");
+        }
     }
 
     pub fn make(self: BaseTag) El {
@@ -264,8 +300,6 @@ pub fn Text(content: Str) El {
 fn baseElementConfig(tag: Str, props: ?Props, children: Children) BaseTag {
     return BaseTag{ .tag = tag, .children = children, .props = props };
 }
-
-// @TODO: add more elements
 
 pub fn html(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("html", props, children);
