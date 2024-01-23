@@ -69,18 +69,32 @@ test "basic render" {
     alloc.free(renderedText);
 }
 
+// @TODO: figure out more performant way to iterate
 test "dynamic render" {
     const alloc = std.testing.allocator;
-    var textList = std.ArrayList(El).init(alloc);
-    defer textList.deinit();
+
+    var strList = std.ArrayList([]u8).init(alloc);
+    defer {
+        for (strList.items) |item| {
+            alloc.free(item);
+        }
+        strList.deinit();
+    }
 
     for (1..4) |i| {
         const str = try std.fmt.allocPrint(alloc, "Hi from Text {d}", .{i});
-        const text = Text(str);
-        try textList.append(text);
+        try strList.append(str);
     }
 
-    const children: []El = try textList.toOwnedSlice();
+    var textElList = std.ArrayList(El).init(alloc);
+    defer textElList.deinit();
+
+    for (strList.items) |item| {
+        const textEl = Text(item);
+        try textElList.append(textEl);
+    }
+
+    const children: []El = try textElList.toOwnedSlice();
 
     const markup = html(Props{
         .lang = "en-US",
