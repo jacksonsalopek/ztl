@@ -288,7 +288,7 @@ pub const BaseTag = struct {
         }
     }
 
-    pub fn make(self: BaseTag) El {
+    pub fn el(self: BaseTag) El {
         return El{ .base = self };
     }
 };
@@ -401,7 +401,7 @@ pub fn ul(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("ul", props, children);
 }
 
-const header = head(null, null).make();
+const header = head(null, null).el();
 // minimal example
 pub const example = html(Props{
     .lang = "en-US",
@@ -419,6 +419,6 @@ pub const example = html(Props{
             .class = "test",
         }, &[_]El{
             Text("test content"),
-        }).make(),
-    }).make(),
+        }).el(),
+    }).el(),
 });

@@ -41,8 +41,8 @@ test "basic ztl structure" {
     const markup = html(Props{
         .lang = "en-US",
     }, &[_]El{
-        head(null, null).make(),
-        body(null, null).make(),
+        head(null, null).el(),
+        body(null, null).el(),
     });
 
     if (markup.props) |props| {
@@ -56,8 +56,8 @@ test "basic render" {
     const markup = html(Props{
         .lang = "en-US",
     }, &[_]El{
-        head(null, null).make(),
-        body(null, null).make(),
+        head(null, null).el(),
+        body(null, null).el(),
     });
 
     const alloc = std.testing.allocator;
@@ -98,7 +98,7 @@ test "dynamic render" {
     for (strList.items) |item| {
         const textEl = p(Props{
             .class = "text",
-        }, &[_]El{Text(item)}).make();
+        }, &[_]El{Text(item)}).el();
         try textElList.append(textEl);
     }
 
@@ -110,8 +110,8 @@ test "dynamic render" {
     const markup = html(Props{
         .lang = "en-US",
     }, &[_]El{
-        head(null, null).make(),
-        body(null, children).make(),
+        head(null, null).el(),
+        body(null, children).el(),
     });
 
     // create buffer to hold element strings as they're rendered
