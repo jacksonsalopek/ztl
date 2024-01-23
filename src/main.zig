@@ -1,6 +1,14 @@
 const std = @import("std");
 const ztl = @import("./ztl.zig");
 
+// ztl aliases
+const html = ztl.html;
+const head = ztl.head;
+const body = ztl.body;
+const El = ztl.El;
+const Props = ztl.Props;
+const Text = ztl.Text;
+
 pub fn main() !void {
     std.debug.print("Running ztl example...\n", .{});
     const example = ztl.example;
@@ -26,28 +34,67 @@ pub fn main() !void {
     std.debug.print("example.children[1].children[0].children[0].text=\"{?s}\"\n", .{
         example.base.children.?[1].base.children.?[0].base.children.?[0].text,
     });
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    // const stdout_file = std.io.getStdOut().writer();
-    // var bw = std.io.bufferedWriter(stdout_file);
-    // const stdout = bw.writer();
-
-    // try stdout.print("Run `zig build test` to run the tests.\n", .{});
-
-    // try bw.flush(); // don't forget to flush!
 }
 
 test "basic ztl structure" {
-    const html = ztl.html(ztl.Props{
+    const markup = html(Props{
         .lang = "en-US",
-    }, &[_]ztl.El{
-        (ztl.head(null, null){}).make(),
-        (ztl.body(null, null){}).make(),
+    }, &[_]El{
+        (head(null, null){}).make(),
+        (body(null, null){}).make(),
     }){};
-    if (html.base.props) |props| {
+
+    if (markup.base.props) |props| {
         if (props.lang) |lang| try std.testing.expectEqualStrings("en-US", lang);
     }
-    try std.testing.expectEqualStrings("head", html.base.children.?[0].base.tag);
-    try std.testing.expectEqualStrings("body", html.base.children.?[1].base.tag);
+    try std.testing.expectEqualStrings("head", markup.base.children.?[0].base.tag);
+    try std.testing.expectEqualStrings("body", markup.base.children.?[1].base.tag);
+}
+
+test "basic render" {
+    const markup = html(Props{
+        .lang = "en-US",
+    }, &[_]El{
+        (head(null, null){}).make(),
+        (body(null, null){}).make(),
+    }){};
+
+    const alloc = std.testing.allocator;
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+
+    try markup.base.render(&buf);
+    const renderedText = try buf.toOwnedSlice();
+    try std.testing.expectEqualStrings("<html lang=\"en-US\"><head></head><body></body></html>", renderedText);
+    alloc.free(renderedText);
+}
+
+test "dynamic render" {
+    const alloc = std.testing.allocator;
+    var textList = std.ArrayList(El).init(alloc);
+    defer textList.deinit();
+
+    for (1..5) |i| {
+        const str = try std.fmt.allocPrint(alloc, "Hi from Text {d}", .{i});
+        const text = Text(str);
+        try textList.append(text);
+    }
+
+    const children: []El = try textList.toOwnedSlice();
+
+    const markup = html(Props{
+        .lang = "en-US",
+    }, &[_]El{
+        (head(null, null){}).make(),
+        (body(null, children){}).make(),
+    }){};
+
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+
+    try markup.base.render(&buf);
+    const renderedText = try buf.toOwnedSlice();
+    try std.testing.expectEqualStrings("<html lang=\"en-US\"><head></head><body></body></html>", renderedText);
+    alloc.free(renderedText);
+    alloc.free(children);
 }
