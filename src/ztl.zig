@@ -151,23 +151,27 @@ pub const Props = struct {
     alt: ?Str = null,
     aria: ?ARIAProps = null,
     class: ?Str = null,
+    // @TODO: convert to bool
     checked: ?Str = null,
+    // @TODO: convert to bool
     disabled: ?Str = null,
+    // @TODO: convert to u16
     height: ?Str = null,
     href: ?Str = null,
     hx: ?HTMXProps = null,
     id: ?Str = null,
     lang: ?Str = null,
     rel: ?Str = null,
+    // @TODO: convert to bool
     selected: ?Str = null,
     src: ?Str = null,
     style: ?Str = null,
     title: ?Str = null,
     type: ?Str = null,
     value: ?Str = null,
+    // @TODO: convert to u16
     width: ?Str = null,
 
-    // @TODO
     pub fn render(self: Props, buf: *std.ArrayList(u8)) !void {
         if (self.alt) |alt| {
             try buf.appendSlice(" alt=\"");
@@ -193,6 +197,7 @@ pub const Props = struct {
             try buf.appendSlice("\"");
         }
         if (self.height) |height| {
+            // use std.fmt.formatIntValue
             try buf.appendSlice(" height=\"");
             try buf.appendSlice(height);
             try buf.appendSlice("\"");
@@ -235,9 +240,9 @@ pub const Props = struct {
             try buf.appendSlice(style);
             try buf.appendSlice("\"");
         }
-        if (self.title) |title| {
+        if (self.title) |t| {
             try buf.appendSlice(" title=\"");
-            try buf.appendSlice(title);
+            try buf.appendSlice(t);
             try buf.appendSlice("\"");
         }
         if (self.type) |t| {
@@ -251,6 +256,7 @@ pub const Props = struct {
             try buf.appendSlice("\"");
         }
         if (self.width) |width| {
+            // @TODO: use std.fmt.formatIntValue
             try buf.appendSlice(" width=\"");
             try buf.appendSlice(width);
             try buf.appendSlice("\"");
@@ -399,6 +405,10 @@ pub fn th(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("th", props, children);
 }
 
+pub fn title(props: ?Props, children: Children) BaseTag {
+    return baseElementConfig("title", props, children);
+}
+
 pub fn tr(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("tr", props, children);
 }
@@ -407,8 +417,12 @@ pub fn ul(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("ul", props, children);
 }
 
-const header = head(null, null).el();
 // minimal example
+const header = head(null, &[_]El{
+    title(null, &[_]El{
+        Text("Test page"),
+    }).el(),
+}).el();
 pub const example = html(Props{
     .lang = "en-US",
     // children array must be passed as pointer
