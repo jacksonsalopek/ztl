@@ -42,11 +42,75 @@ pub const ARIAProps = struct {
     role: ?Str = null,
     selected: ?Str = null,
 
-    // @TODO
     pub fn render(self: ARIAProps, buf: *std.ArrayList(u8)) !void {
         if (self.activedescendant) |ad| {
             try buf.appendSlice(" aria-activedescendent=\"");
             try buf.appendSlice(ad);
+            try buf.appendSlice("\"");
+        }
+        if (self.checked) |checked| {
+            try buf.appendSlice(" aria-checked=\"");
+            try buf.appendSlice(checked);
+            try buf.appendSlice("\"");
+        }
+        if (self.controls) |controls| {
+            try buf.appendSlice(" aria-controls=\"");
+            try buf.appendSlice(controls);
+            try buf.appendSlice("\"");
+        }
+        if (self.describedby) |describedby| {
+            try buf.appendSlice(" aria-describedby=\"");
+            try buf.appendSlice(describedby);
+            try buf.appendSlice("\"");
+        }
+        if (self.disabled) |disabled| {
+            try buf.appendSlice(" aria-disabled=\"");
+            try buf.appendSlice(disabled);
+            try buf.appendSlice("\"");
+        }
+        if (self.expanded) |expanded| {
+            try buf.appendSlice(" aria-expanded=\"");
+            try buf.appendSlice(expanded);
+            try buf.appendSlice("\"");
+        }
+        if (self.hidden) |hidden| {
+            try buf.appendSlice(" aria-hidden=\"");
+            try buf.appendSlice(hidden);
+            try buf.appendSlice("\"");
+        }
+        if (self.label) |label| {
+            try buf.appendSlice(" aria-label=\"");
+            try buf.appendSlice(label);
+            try buf.appendSlice("\"");
+        }
+        if (self.labelledby) |labelledby| {
+            try buf.appendSlice(" aria-labelledby=\"");
+            try buf.appendSlice(labelledby);
+            try buf.appendSlice("\"");
+        }
+        if (self.live) |live| {
+            try buf.appendSlice(" aria-live=\"");
+            try buf.appendSlice(live);
+            try buf.appendSlice("\"");
+        }
+        if (self.owns) |owns| {
+            try buf.appendSlice(" aria-owns=\"");
+            try buf.appendSlice(owns);
+            try buf.appendSlice("\"");
+        }
+        if (self.pressed) |pressed| {
+            try buf.appendSlice(" aria-pressed=\"");
+            try buf.appendSlice(pressed);
+            try buf.appendSlice("\"");
+        }
+        if (self.role) |role| {
+            try buf.appendSlice(" aria-role=\"");
+            try buf.appendSlice(role);
+            try buf.appendSlice("\"");
+        }
+        if (self.selected) |selected| {
+            try buf.appendSlice(" aria-selected=\"");
+            try buf.appendSlice(selected);
             try buf.appendSlice("\"");
         }
     }
