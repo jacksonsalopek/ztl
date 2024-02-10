@@ -1,18 +1,55 @@
 const std = @import("std");
-const ztl = @import("./ztl.zig");
+const z = @import("./ztl.zig");
 
 // ztl aliases
-const html = ztl.html;
-const head = ztl.head;
-const body = ztl.body;
-const p = ztl.p;
-const El = ztl.El;
-const Props = ztl.Props;
-const Text = ztl.Text;
+const html = z.html;
+const head = z.head;
+const body = z.body;
+const p = z.p;
+const El = z.El;
+const Props = z.Props;
+const Text = z.Text;
+
+pub fn link(title: []const u8, href: []const u8) El {
+    return z.span(Props{ .class = "mx-1" }, &[_]El{
+        z.a(Props{ .href = href, .class = "hover:text-blue-700 hover:underline" }, &[_]El{
+            Text(title),
+        }).el(),
+    }).el();
+}
+
+pub fn base(title: El, content: El) z.BaseTag {
+    return html(Props{
+        .lang = "en-US",
+    }, &[_]El{
+        head(null, &[_]El{
+            z.meta(Props{ .charset = "utf-8" }, null).el(),
+            z.meta(Props{
+                .name = "viewport",
+                .content = "width=device-width, initial-scale=1",
+            }, null).el(),
+            z.title(null, &[_]El{ Text("Jackson Salopek | "), title }).el(),
+            z.script(Props{ .src = "/js/htmx.js" }, null).el(),
+            z.script(Props{ .src = "/js/tailwind.js" }, null).el(),
+        }).el(),
+        body(null, &[_]El{
+            z.a(Props{ .href = "/" }, &[_]El{
+                z.h1(Props{ .class = "text-2xl" }, &[_]El{Text("Jackson Salopek")}).el(),
+            }).el(),
+            z.nav(Props{ .class = "text-center" }, &[_]El{
+                link("apps", "/apps"),
+                link("blog", "/blog"),
+                link("resume", "/pdf/resume.pdf"),
+            }).el(),
+            z.hr(Props{ .class = "mt-2" }, null).el(),
+            content,
+        }).el(),
+    });
+}
 
 pub fn main() !void {
     std.debug.print("Running ztl example...\n", .{});
-    const example = ztl.example;
+    const example = z.example;
     std.debug.print("example.type=\"{any}\"\n", .{@TypeOf(example)});
     std.debug.print("example.lang=\"{?s}\"\n", .{
         example.props.?.lang,
@@ -155,4 +192,29 @@ test "dynamic render" {
     // must free allocator at end of scope instead of deferring
     alloc.free(renderedText);
     alloc.free(children);
+}
+
+test "layout + component structure" {
+    const alloc = std.testing.allocator;
+
+    const page_title = Text("Apps");
+    const markup = base(page_title, z.h1(null, &[_]El{page_title}).el());
+
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+    try markup.render(&buf, false);
+    const rendered_output = try buf.toOwnedSlice();
+
+    try std.testing.expectEqualStrings(
+        \\<!DOCTYPE html>
+        \\<html lang="en-US">
+        \\<head>
+        \\</head>
+        \\<body>
+        \\</body>
+        \\</html>
+        \\
+    , rendered_output);
+
+    alloc.free(rendered_output);
 }
