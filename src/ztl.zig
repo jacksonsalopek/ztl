@@ -151,8 +151,10 @@ pub const Props = struct {
     alt: ?Str = null,
     aria: ?ARIAProps = null,
     class: ?Str = null,
+    charset: ?Str = null,
     // @TODO: convert to bool
     checked: ?Str = null,
+    content: ?Str = null,
     // @TODO: convert to bool
     disabled: ?Str = null,
     // @TODO: convert to u16
@@ -161,6 +163,7 @@ pub const Props = struct {
     hx: ?HTMXProps = null,
     id: ?Str = null,
     lang: ?Str = null,
+    name: ?Str = null,
     rel: ?Str = null,
     // @TODO: convert to bool
     selected: ?Str = null,
@@ -186,9 +189,19 @@ pub const Props = struct {
             try buf.appendSlice(class);
             try buf.appendSlice("\"");
         }
+        if (self.charset) |charset| {
+            try buf.appendSlice(" charset=\"");
+            try buf.appendSlice(charset);
+            try buf.appendSlice("\"");
+        }
         if (self.checked) |checked| {
             try buf.appendSlice(" checked=\"");
             try buf.appendSlice(checked);
+            try buf.appendSlice("\"");
+        }
+        if (self.content) |content| {
+            try buf.appendSlice(" content=\"");
+            try buf.appendSlice(content);
             try buf.appendSlice("\"");
         }
         if (self.disabled) |disabled| {
@@ -317,6 +330,10 @@ pub fn html(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("html", props, children);
 }
 
+pub fn a(props: ?Props, children: Children) BaseTag {
+    return baseElementConfig("a", props, children);
+}
+
 pub fn b(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("b", props, children);
 }
@@ -357,6 +374,10 @@ pub fn head(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("head", props, children);
 }
 
+pub fn hr(props: ?Props, children: Children) BaseTag {
+    return baseElementConfig("hr", props, children);
+}
+
 pub fn i(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("i", props, children);
 }
@@ -375,6 +396,10 @@ pub fn link(props: ?Props, children: Children) BaseTag {
 
 pub fn meta(props: ?Props, children: Children) BaseTag {
     return baseElementConfig("meta", props, children);
+}
+
+pub fn nav(props: ?Props, children: Children) BaseTag {
+    return baseElementConfig("nav", props, children);
 }
 
 pub fn ol(props: ?Props, children: Children) BaseTag {
