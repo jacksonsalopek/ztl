@@ -1,55 +1,129 @@
 const std = @import("std");
-const z = @import("./ztl.zig");
+const ztl = @import("./ztl.zig");
+const ztlc = @import("./ztlc.zig");
 
 // ztl aliases
-const html = z.html;
-const head = z.head;
-const body = z.body;
-const p = z.p;
-const El = z.El;
-const Props = z.Props;
-const Text = z.Text;
+const El = ztl.El;
+const Props = ztl.Props;
 
-pub fn link(title: []const u8, href: []const u8) El {
+pub fn link(z: *ztl.ZTLBuilder, title: []const u8, href: []const u8) El {
     return z.span(Props{ .class = "mx-1" }, &[_]El{
         z.a(Props{ .href = href, .class = "hover:text-blue-700 hover:underline" }, &[_]El{
-            Text(title),
+            z.text(title),
         }).el(),
     }).el();
 }
 
-pub fn base(title: El, content: El) z.BaseTag {
-    return html(Props{
+pub fn testBase(z: *ztl.ZTLBuilder, title: El) ztl.BaseTag {
+    return z.html(Props{
         .lang = "en-US",
     }, &[_]El{
-        head(null, &[_]El{
-            z.meta(Props{ .charset = "utf-8" }, null).el(),
-            z.meta(Props{
-                .name = "viewport",
-                .content = "width=device-width, initial-scale=1",
-            }, null).el(),
-            z.title(null, &[_]El{ Text("Jackson Salopek | "), title }).el(),
-            z.script(Props{ .src = "/js/htmx.js" }, null).el(),
-            z.script(Props{ .src = "/js/tailwind.js" }, null).el(),
-        }).el(),
-        body(null, &[_]El{
-            z.a(Props{ .href = "/" }, &[_]El{
-                z.h1(Props{ .class = "text-2xl" }, &[_]El{Text("Jackson Salopek")}).el(),
-            }).el(),
-            z.nav(Props{ .class = "text-center" }, &[_]El{
-                link("apps", "/apps"),
-                link("blog", "/blog"),
-                link("resume", "/pdf/resume.pdf"),
-            }).el(),
-            z.hr(Props{ .class = "mt-2" }, null).el(),
-            content,
-        }).el(),
+        z.head(null, &[_]El{z.title(null, &[_]El{title}).el()}).el(),
+        z.body(null, null).el(),
     });
+}
+
+fn benchmark(builder: *ztlc.ZTLBuilder, allocator: std.mem.Allocator) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    // Create a more complex sample template that's closer to real-world usage
+    const children = [_]ztlc.El{
+        builder.h1(.{ .class = "title" }, &[_]ztlc.El{builder.text("Hello World")}).el(),
+        builder.div(
+            .{ .class = "container", .id = "main" },
+            &[_]ztlc.El{
+                builder.p(.{ .class = "intro" }, &[_]ztlc.El{builder.text("This is a paragraph with some text content.")}).el(),
+                builder.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztlc.El{builder.text("Link to Example")}).el(),
+                builder.div(
+                    .{ .class = "content" },
+                    &[_]ztlc.El{
+                        builder.p(null, &[_]ztlc.El{builder.text("Some more content here.")}).el(),
+                        builder.ul(
+                            .{ .class = "list" },
+                            &[_]ztlc.El{
+                                builder.li(null, &[_]ztlc.El{builder.text("Item 1")}).el(),
+                                builder.li(null, &[_]ztlc.El{builder.text("Item 2")}).el(),
+                                builder.li(null, &[_]ztlc.El{builder.text("Item 3")}).el(),
+                                builder.li(null, &[_]ztlc.El{builder.text("Item 4")}).el(),
+                                builder.li(null, &[_]ztlc.El{builder.text("Item 5")}).el(),
+                            },
+                        ).el(),
+                    },
+                ).el(),
+                builder.div(
+                    .{ .class = "footer" },
+                    &[_]ztlc.El{
+                        builder.p(null, &[_]ztlc.El{builder.text("Footer content.")}).el(),
+                        builder.a(.{ .href = "#top", .class = "top-link" }, &[_]ztlc.El{builder.text("Back to top")}).el(),
+                    },
+                ).el(),
+            },
+        ).el(),
+    };
+
+    const html = builder.html(.{ .lang = "en" }, &children).el();
+
+    // Setup timing
+    var timer = try std.time.Timer.start();
+    const iterations: usize = 10000; // More iterations for better average
+    var total_ns: u64 = 0;
+
+    // Warmup (to ensure fair comparison)
+    for (0..100) |_| {
+        const html_string = try builder.renderToString(html, false);
+        allocator.free(html_string);
+    }
+
+    // Run the benchmark
+    for (0..iterations) |_| {
+        timer.reset();
+        const html_string = try builder.renderToString(html, false);
+        defer allocator.free(html_string);
+        total_ns += timer.read();
+    }
+
+    const average_ns = total_ns / iterations;
+    try stdout.print("Average render time: {d}ns\n", .{average_ns});
+
+    // Memory usage benchmark
+    const before = std.heap.page_allocator.alloc_count;
+    const html_string = try builder.renderToString(html, false);
+    allocator.free(html_string);
+    const after = std.heap.page_allocator.alloc_count;
+
+    try stdout.print("Memory allocations during render: {d}\n", .{after - before});
 }
 
 pub fn main() !void {
     std.debug.print("Running ztl example...\n", .{});
-    const example = z.example;
+    const alloc = std.heap.page_allocator;
+    var z = ztl.ZTLBuilder.init(alloc);
+    defer z.deinit();
+
+    const header = z.head(null, &[_]El{
+        z.title(null, &[_]El{
+            z.text("Test page"),
+        }).el(),
+    }).el();
+    const example = z.html(Props{
+        .lang = "en-US",
+        // children array must be passed as pointer
+    }, &[_]El{
+        // props are first arg, children second
+        // must pass null if element has no props/children
+        // must also call make, which standardizes element structs
+        header,
+        z.body(Props{
+            .class = "body",
+        }, &[_]El{
+            z.div(Props{
+                .id = "app",
+                .class = "test",
+            }, &[_]El{
+                z.text("test content"),
+            }).el(),
+        }).el(),
+    });
     std.debug.print("example.type=\"{any}\"\n", .{@TypeOf(example)});
     std.debug.print("example.lang=\"{?s}\"\n", .{
         example.props.?.lang,
@@ -72,14 +146,32 @@ pub fn main() !void {
     std.debug.print("example.children[1].children[0].children[0].text=\"{?s}\"\n", .{
         example.children.?[1].base.children.?[0].base.children.?[0].text,
     });
+
+    const start = try std.time.Instant.now();
+
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+    try example.render(&buf, true);
+    const rendered_text = try buf.toOwnedSlice();
+    const end = try std.time.Instant.now();
+    std.debug.print("\n\nrender output:\n{s}\n", .{rendered_text});
+    std.debug.print("\nrender time: {d}ns\n", .{end.since(start)});
+
+    var zc = ztlc.ZTLBuilder.init(alloc);
+    defer zc.deinit();
+    try benchmark(&zc, alloc);
 }
 
 test "basic ztl structure" {
-    const markup = html(Props{
+    const alloc = std.testing.allocator;
+    var z = ztl.ZTLBuilder.init(alloc);
+    defer z.deinit();
+
+    const markup = z.html(Props{
         .lang = "en-US",
     }, &[_]El{
-        head(null, null).el(),
-        body(null, null).el(),
+        z.head(null, null).el(),
+        z.body(null, null).el(),
     });
 
     if (markup.props) |props| {
@@ -90,14 +182,17 @@ test "basic ztl structure" {
 }
 
 test "basic render" {
-    const markup = html(Props{
+    const alloc = std.testing.allocator;
+    var z = ztl.ZTLBuilder.init(alloc);
+    defer z.deinit();
+
+    const markup = z.html(Props{
         .lang = "en-US",
     }, &[_]El{
-        head(null, null).el(),
-        body(null, null).el(),
+        z.head(null, null).el(),
+        z.body(null, null).el(),
     });
 
-    const alloc = std.testing.allocator;
     var buf = std.ArrayList(u8).init(alloc);
     defer buf.deinit();
 
@@ -108,9 +203,12 @@ test "basic render" {
 }
 
 test "html partial render" {
-    const markup = p(null, &[_]El{Text("test")});
-
     const alloc = std.testing.allocator;
+    var z = ztl.ZTLBuilder.init(alloc);
+    defer z.deinit();
+
+    const markup = z.p(null, &[_]El{z.text("test")});
+
     var buf = std.ArrayList(u8).init(alloc);
     defer buf.deinit();
 
@@ -124,6 +222,8 @@ test "html partial render" {
 test "dynamic render" {
     // init allocator, ArenaAllocator is recommended in actual usage
     const alloc = std.testing.allocator;
+    var z = ztl.ZTLBuilder.init(alloc);
+    defer z.deinit();
 
     // build list of strings, defer freeing of string memory to end of scope
     var strList = std.ArrayList([]u8).init(alloc);
@@ -146,9 +246,9 @@ test "dynamic render" {
 
     // add strings as p tags to elements arraylist
     for (strList.items) |item| {
-        const textEl = p(Props{
+        const textEl = z.p(Props{
             .class = "text",
-        }, &[_]El{Text(item)}).el();
+        }, &[_]El{z.text(item)}).el();
         try textElList.append(textEl);
     }
 
@@ -157,20 +257,23 @@ test "dynamic render" {
     const children: []El = try textElList.toOwnedSlice();
 
     // build markup
-    const markup = html(Props{
+    var markup = z.html(Props{
         .lang = "en-US",
     }, &[_]El{
-        head(null, null).el(),
-        body(null, children).el(),
+        z.head(null, null).el(),
+        z.body(null, children).el(),
     });
 
     // create buffer to hold element strings as they're rendered
     var buf = std.ArrayList(u8).init(alloc);
     defer buf.deinit();
 
+    const start = try std.time.Instant.now();
+
     // render markup and convert to string array
     try markup.render(&buf, false);
     const renderedText = try buf.toOwnedSlice();
+    const end = try std.time.Instant.now();
 
     try std.testing.expectEqualStrings(
         \\<!DOCTYPE html>
@@ -179,15 +282,16 @@ test "dynamic render" {
         \\</head>
         \\<body>
         \\<p class="text">
-        \\Hi from Text 3</p>
+        \\Hi from Text 1</p>
         \\<p class="text">
-        \\Hi from Text 3</p>
+        \\Hi from Text 2</p>
         \\<p class="text">
         \\Hi from Text 3</p>
         \\</body>
         \\</html>
         \\
     , renderedText);
+    std.debug.print("\nrender time: {d}ns\n", .{end.since(start)});
 
     // must free allocator at end of scope instead of deferring
     alloc.free(renderedText);
@@ -196,9 +300,11 @@ test "dynamic render" {
 
 test "layout + component structure" {
     const alloc = std.testing.allocator;
+    var z = ztl.ZTLBuilder.init(alloc);
+    defer z.deinit();
 
-    const page_title = Text("Apps");
-    const markup = base(page_title, z.h1(null, &[_]El{page_title}).el());
+    const page_title = z.text("Apps");
+    var markup = testBase(&z, page_title);
 
     var buf = std.ArrayList(u8).init(alloc);
     defer buf.deinit();
@@ -209,6 +315,8 @@ test "layout + component structure" {
         \\<!DOCTYPE html>
         \\<html lang="en-US">
         \\<head>
+        \\<title>
+        \\Apps</title>
         \\</head>
         \\<body>
         \\</body>

@@ -318,152 +318,170 @@ pub const BaseTag = struct {
     }
 };
 
-pub fn Text(content: Str) El {
-    return El{ .text = @constCast(content) };
-}
+pub const ZTLBuilder = struct {
+    allocator: std.mem.Allocator,
+    // Track string allocations (for text content and tag names)
+    string_allocations: std.ArrayList([]u8),
+    // Track element array allocations
+    element_allocations: std.ArrayList([]El),
 
-fn baseElementConfig(tag: Str, props: ?Props, children: Children) BaseTag {
-    return BaseTag{ .tag = tag, .children = children, .props = props };
-}
+    pub fn init(allocator: std.mem.Allocator) ZTLBuilder {
+        return ZTLBuilder{
+            .allocator = allocator,
+            .string_allocations = std.ArrayList([]u8).init(allocator),
+            .element_allocations = std.ArrayList([]El).init(allocator),
+        };
+    }
 
-pub fn html(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("html", props, children);
-}
+    pub fn deinit(self: *ZTLBuilder) void {
+        // Free all string allocations (text content and tag names)
+        for (self.string_allocations.items) |allocation| {
+            self.allocator.free(allocation);
+        }
+        self.string_allocations.deinit();
 
-pub fn a(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("a", props, children);
-}
+        // Free all element array allocations
+        for (self.element_allocations.items) |allocation| {
+            self.allocator.free(allocation);
+        }
+        self.element_allocations.deinit();
+    }
 
-pub fn b(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("b", props, children);
-}
+    pub fn text(self: *ZTLBuilder, content: Str) El {
+        const copy = self.allocator.dupe(u8, content) catch unreachable;
+        self.string_allocations.append(copy) catch unreachable;
+        return El{ .text = copy };
+    }
 
-pub fn body(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("body", props, children);
-}
+    fn baseElementConfig(self: *ZTLBuilder, tag: Str, props: ?Props, children: Children) BaseTag {
+        // Allocate and track tag name
+        const tagCopy = self.allocator.dupe(u8, tag) catch unreachable;
+        self.string_allocations.append(tagCopy) catch unreachable;
 
-pub fn div(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("div", props, children);
-}
+        // Allocate and track children array if present
+        var childrenCopy: ?[]const El = null;
+        if (children) |c| {
+            const elCopy = self.allocator.dupe(El, c) catch unreachable;
+            self.element_allocations.append(elCopy) catch unreachable;
+            childrenCopy = elCopy;
+        }
 
-pub fn h1(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("h1", props, children);
-}
+        return BaseTag{ .tag = tagCopy, .children = childrenCopy, .props = props };
+    }
 
-pub fn h2(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("h2", props, children);
-}
+    pub fn html(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "html", props, children);
+    }
 
-pub fn h3(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("h3", props, children);
-}
+    pub fn a(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "a", props, children);
+    }
 
-pub fn h4(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("h4", props, children);
-}
+    pub fn b(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "b", props, children);
+    }
 
-pub fn h5(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("h5", props, children);
-}
+    pub fn body(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "body", props, children);
+    }
 
-pub fn h6(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("h6", props, children);
-}
+    pub fn div(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "div", props, children);
+    }
 
-pub fn head(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("head", props, children);
-}
+    pub fn h1(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "h1", props, children);
+    }
 
-pub fn hr(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("hr", props, children);
-}
+    pub fn h2(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "h2", props, children);
+    }
 
-pub fn i(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("i", props, children);
-}
+    pub fn h3(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "h3", props, children);
+    }
 
-pub fn img(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("img", props, children);
-}
+    pub fn h4(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "h4", props, children);
+    }
 
-pub fn li(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("li", props, children);
-}
+    pub fn h5(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "h5", props, children);
+    }
 
-pub fn link(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("link", props, children);
-}
+    pub fn h6(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "h6", props, children);
+    }
 
-pub fn meta(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("meta", props, children);
-}
+    pub fn head(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "head", props, children);
+    }
 
-pub fn nav(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("nav", props, children);
-}
+    pub fn hr(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "hr", props, children);
+    }
 
-pub fn ol(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("ol", props, children);
-}
+    pub fn i(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "i", props, children);
+    }
 
-pub fn p(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("p", props, children);
-}
+    pub fn img(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "img", props, children);
+    }
 
-pub fn script(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("script", props, children);
-}
+    pub fn li(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "li", props, children);
+    }
 
-pub fn span(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("span", props, children);
-}
+    pub fn link(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "link", props, children);
+    }
 
-pub fn table(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("table", props, children);
-}
+    pub fn meta(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "meta", props, children);
+    }
 
-pub fn td(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("td", props, children);
-}
+    pub fn nav(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "nav", props, children);
+    }
 
-pub fn th(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("th", props, children);
-}
+    pub fn ol(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "ol", props, children);
+    }
 
-pub fn title(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("title", props, children);
-}
+    pub fn p(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "p", props, children);
+    }
 
-pub fn tr(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("tr", props, children);
-}
+    pub fn script(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "script", props, children);
+    }
 
-pub fn ul(props: ?Props, children: Children) BaseTag {
-    return baseElementConfig("ul", props, children);
-}
+    pub fn span(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "span", props, children);
+    }
 
-// minimal example
-const header = head(null, &[_]El{
-    title(null, &[_]El{
-        Text("Test page"),
-    }).el(),
-}).el();
-pub const example = html(Props{
-    .lang = "en-US",
-    // children array must be passed as pointer
-}, &[_]El{
-    // props are first arg, children second
-    // must pass null if element has no props/children
-    // must also call make, which standardizes element structs
-    header,
-    body(Props{
-        .class = "body",
-    }, &[_]El{
-        div(Props{
-            .id = "app",
-            .class = "test",
-        }, &[_]El{
-            Text("test content"),
-        }).el(),
-    }).el(),
-});
+    pub fn table(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "table", props, children);
+    }
+
+    pub fn td(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "td", props, children);
+    }
+
+    pub fn th(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "th", props, children);
+    }
+
+    pub fn title(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "title", props, children);
+    }
+
+    pub fn tr(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "tr", props, children);
+    }
+
+    pub fn ul(self: *ZTLBuilder, props: ?Props, children: Children) BaseTag {
+        return baseElementConfig(self, "ul", props, children);
+    }
+};
