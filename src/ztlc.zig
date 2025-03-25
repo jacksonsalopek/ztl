@@ -211,14 +211,19 @@ pub const Props = struct {
     }
 };
 
+const TagCacheEntry = struct {
+    tag: []const u8,
+    cache: TagCache,
+};
+
 // Use comptime to generate tag cache with zero runtime allocation
 const ComptimeTagCache = struct {
     // Generate the tag cache at compile time
     const common_tags = [_][]const u8{ "html", "head", "body", "div", "span", "p", "h1", "h2", "h3", "a", "ul", "ol", "li", "table", "tr", "td", "th" };
 
     // Comptime function to create tag cache entries
-    fn makeTagCacheEntries() [common_tags.len]struct { tag: []const u8, cache: TagCache } {
-        var result: [common_tags.len]struct { tag: []const u8, cache: TagCache } = undefined;
+    fn makeTagCacheEntries() [common_tags.len]TagCacheEntry {
+        var result: [common_tags.len]TagCacheEntry = undefined;
 
         inline for (common_tags, 0..) |tag, i| {
             // These strings are compile-time constants, no allocation needed

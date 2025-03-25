@@ -23,45 +23,46 @@ pub fn testBase(z: *ztl.ZTLBuilder, title: El) ztl.BaseTag {
     });
 }
 
-fn benchmark(builder: *ztlc.ZTLBuilder, allocator: std.mem.Allocator) !void {
+// Modified to accept the error union type
+fn benchmarkZTLC(z: anytype, allocator: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
 
     // Create a more complex sample template that's closer to real-world usage
     const children = [_]ztlc.El{
-        builder.h1(.{ .class = "title" }, &[_]ztlc.El{builder.text("Hello World")}).el(),
-        builder.div(
+        z.h1(.{ .class = "title" }, &[_]ztlc.El{z.text("Hello World")}).el(),
+        z.div(
             .{ .class = "container", .id = "main" },
             &[_]ztlc.El{
-                builder.p(.{ .class = "intro" }, &[_]ztlc.El{builder.text("This is a paragraph with some text content.")}).el(),
-                builder.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztlc.El{builder.text("Link to Example")}).el(),
-                builder.div(
+                z.p(.{ .class = "intro" }, &[_]ztlc.El{z.text("This is a paragraph with some text content.")}).el(),
+                z.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztlc.El{z.text("Link to Example")}).el(),
+                z.div(
                     .{ .class = "content" },
                     &[_]ztlc.El{
-                        builder.p(null, &[_]ztlc.El{builder.text("Some more content here.")}).el(),
-                        builder.ul(
+                        z.p(null, &[_]ztlc.El{z.text("Some more content here.")}).el(),
+                        z.ul(
                             .{ .class = "list" },
                             &[_]ztlc.El{
-                                builder.li(null, &[_]ztlc.El{builder.text("Item 1")}).el(),
-                                builder.li(null, &[_]ztlc.El{builder.text("Item 2")}).el(),
-                                builder.li(null, &[_]ztlc.El{builder.text("Item 3")}).el(),
-                                builder.li(null, &[_]ztlc.El{builder.text("Item 4")}).el(),
-                                builder.li(null, &[_]ztlc.El{builder.text("Item 5")}).el(),
+                                z.li(null, &[_]ztlc.El{z.text("Item 1")}).el(),
+                                z.li(null, &[_]ztlc.El{z.text("Item 2")}).el(),
+                                z.li(null, &[_]ztlc.El{z.text("Item 3")}).el(),
+                                z.li(null, &[_]ztlc.El{z.text("Item 4")}).el(),
+                                z.li(null, &[_]ztlc.El{z.text("Item 5")}).el(),
                             },
                         ).el(),
                     },
                 ).el(),
-                builder.div(
+                z.div(
                     .{ .class = "footer" },
                     &[_]ztlc.El{
-                        builder.p(null, &[_]ztlc.El{builder.text("Footer content.")}).el(),
-                        builder.a(.{ .href = "#top", .class = "top-link" }, &[_]ztlc.El{builder.text("Back to top")}).el(),
+                        z.p(null, &[_]ztlc.El{z.text("Footer content.")}).el(),
+                        z.a(.{ .href = "#top", .class = "top-link" }, &[_]ztlc.El{z.text("Back to top")}).el(),
                     },
                 ).el(),
             },
         ).el(),
     };
 
-    const html = builder.html(.{ .lang = "en" }, &children).el();
+    const html = z.html(.{ .lang = "en" }, &children).el();
 
     // Setup timing
     var timer = try std.time.Timer.start();
@@ -70,28 +71,88 @@ fn benchmark(builder: *ztlc.ZTLBuilder, allocator: std.mem.Allocator) !void {
 
     // Warmup (to ensure fair comparison)
     for (0..100) |_| {
-        const html_string = try builder.renderToString(html, false);
+        const html_string = try z.renderToString(html, false);
         allocator.free(html_string);
     }
 
     // Run the benchmark
     for (0..iterations) |_| {
         timer.reset();
-        const html_string = try builder.renderToString(html, false);
+        const html_string = try z.renderToString(html, false);
         defer allocator.free(html_string);
         total_ns += timer.read();
     }
 
     const average_ns = total_ns / iterations;
     try stdout.print("Average render time: {d}ns\n", .{average_ns});
+}
 
-    // Memory usage benchmark
-    const before = std.heap.page_allocator.alloc_count;
-    const html_string = try builder.renderToString(html, false);
-    allocator.free(html_string);
-    const after = std.heap.page_allocator.alloc_count;
+// Benchmark function for ztl.zig
+fn benchmark(z: *ztl.ZTLBuilder, allocator: std.mem.Allocator) !void {
+    const stdout = std.io.getStdOut().writer();
 
-    try stdout.print("Memory allocations during render: {d}\n", .{after - before});
+    // Create a more complex sample template that's closer to real-world usage
+    const children = [_]ztl.El{
+        z.h1(.{ .class = "title" }, &[_]ztl.El{z.text("Hello World")}).el(),
+        z.div(
+            .{ .class = "container", .id = "main" },
+            &[_]ztl.El{
+                z.p(.{ .class = "intro" }, &[_]ztl.El{z.text("This is a paragraph with some text content.")}).el(),
+                z.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztl.El{z.text("Link to Example")}).el(),
+                z.div(
+                    .{ .class = "content" },
+                    &[_]ztl.El{
+                        z.p(null, &[_]ztl.El{z.text("Some more content here.")}).el(),
+                        z.ul(
+                            ztl.Props{ .class = "list" },
+                            &[_]ztl.El{
+                                z.li(null, &[_]ztl.El{z.text("Item 1")}).el(),
+                                z.li(null, &[_]ztl.El{z.text("Item 2")}).el(),
+                                z.li(null, &[_]ztl.El{z.text("Item 3")}).el(),
+                                z.li(null, &[_]ztl.El{z.text("Item 4")}).el(),
+                                z.li(null, &[_]ztl.El{z.text("Item 5")}).el(),
+                            },
+                        ).el(),
+                    },
+                ).el(),
+                z.div(
+                    .{ .class = "footer" },
+                    &[_]ztl.El{
+                        z.p(null, &[_]ztl.El{z.text("Footer content.")}).el(),
+                        z.a(.{ .href = "#top", .class = "top-link" }, &[_]ztl.El{z.text("Back to top")}).el(),
+                    },
+                ).el(),
+            },
+        ).el(),
+    };
+
+    const html = z.html(.{ .lang = "en" }, &children).el();
+
+    // Setup timing
+    var timer = try std.time.Timer.start();
+    const iterations: usize = 10000; // More iterations for better average
+    var total_ns: u64 = 0;
+
+    // Warmup (to ensure fair comparison)
+    for (0..100) |_| {
+        var buf = std.ArrayList(u8).init(allocator);
+        try html.render(&buf, false);
+        const html_string = try buf.toOwnedSlice();
+        allocator.free(html_string);
+    }
+
+    // Run the benchmark
+    for (0..iterations) |_| {
+        timer.reset();
+        var buf = std.ArrayList(u8).init(allocator);
+        try html.render(&buf, false);
+        const html_string = try buf.toOwnedSlice();
+        defer allocator.free(html_string);
+        total_ns += timer.read();
+    }
+
+    const average_ns = total_ns / iterations;
+    try stdout.print("Average render time: {d}ns\n", .{average_ns});
 }
 
 pub fn main() !void {
@@ -157,9 +218,15 @@ pub fn main() !void {
     std.debug.print("\n\nrender output:\n{s}\n", .{rendered_text});
     std.debug.print("\nrender time: {d}ns\n", .{end.since(start)});
 
-    var zc = ztlc.ZTLBuilder.init(alloc);
+    // benchmark initial implementation
+    try benchmark(&z, alloc);
+
+    // Create the ZTLBuilder and properly handle the error
+    var zc = try ztlc.ZTLBuilder.init(alloc);
     defer zc.deinit();
-    try benchmark(&zc, alloc);
+
+    // Now this will work fine
+    try benchmarkZTLC(&zc, alloc);
 }
 
 test "basic ztl structure" {
