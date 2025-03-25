@@ -3,23 +3,23 @@ const ztl = @import("./ztl.zig");
 const ztlc = @import("./ztlc.zig");
 
 // ztl aliases
-const El = ztl.El;
+const El = ztl.Element;
 const Props = ztl.Props;
 
 pub fn link(z: *ztl.ZTLBuilder, title: []const u8, href: []const u8) El {
     return z.span(Props{ .class = "mx-1" }, &[_]El{
         z.a(Props{ .href = href, .class = "hover:text-blue-700 hover:underline" }, &[_]El{
             z.text(title),
-        }).el(),
-    }).el();
+        }),
+    });
 }
 
 pub fn testBase(z: *ztl.ZTLBuilder, title: El) ztl.BaseTag {
     return z.html(Props{
         .lang = "en-US",
     }, &[_]El{
-        z.head(null, &[_]El{z.title(null, &[_]El{title}).el()}).el(),
-        z.body(null, null).el(),
+        z.head(null, &[_]El{z.title(null, &[_]El{title})}),
+        z.body(null, null),
     });
 }
 
@@ -28,41 +28,41 @@ fn benchmarkZTLC(z: anytype, allocator: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
 
     // Create a more complex sample template that's closer to real-world usage
-    const children = [_]ztlc.El{
-        z.h1(.{ .class = "title" }, &[_]ztlc.El{z.text("Hello World")}).el(),
+    const children = [_]ztlc.Element{
+        z.h1(.{ .class = "title" }, &[_]ztlc.Element{z.text("Hello World")}),
         z.div(
             .{ .class = "container", .id = "main" },
-            &[_]ztlc.El{
-                z.p(.{ .class = "intro" }, &[_]ztlc.El{z.text("This is a paragraph with some text content.")}).el(),
-                z.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztlc.El{z.text("Link to Example")}).el(),
+            &[_]ztlc.Element{
+                z.p(.{ .class = "intro" }, &[_]ztlc.Element{z.text("This is a paragraph with some text content.")}),
+                z.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztlc.Element{z.text("Link to Example")}),
                 z.div(
                     .{ .class = "content" },
-                    &[_]ztlc.El{
-                        z.p(null, &[_]ztlc.El{z.text("Some more content here.")}).el(),
+                    &[_]ztlc.Element{
+                        z.p(null, &[_]ztlc.Element{z.text("Some more content here.")}),
                         z.ul(
                             .{ .class = "list" },
-                            &[_]ztlc.El{
-                                z.li(null, &[_]ztlc.El{z.text("Item 1")}).el(),
-                                z.li(null, &[_]ztlc.El{z.text("Item 2")}).el(),
-                                z.li(null, &[_]ztlc.El{z.text("Item 3")}).el(),
-                                z.li(null, &[_]ztlc.El{z.text("Item 4")}).el(),
-                                z.li(null, &[_]ztlc.El{z.text("Item 5")}).el(),
+                            &[_]ztlc.Element{
+                                z.li(null, &[_]ztlc.Element{z.text("Item 1")}),
+                                z.li(null, &[_]ztlc.Element{z.text("Item 2")}),
+                                z.li(null, &[_]ztlc.Element{z.text("Item 3")}),
+                                z.li(null, &[_]ztlc.Element{z.text("Item 4")}),
+                                z.li(null, &[_]ztlc.Element{z.text("Item 5")}),
                             },
-                        ).el(),
+                        ),
                     },
-                ).el(),
+                ),
                 z.div(
                     .{ .class = "footer" },
-                    &[_]ztlc.El{
-                        z.p(null, &[_]ztlc.El{z.text("Footer content.")}).el(),
-                        z.a(.{ .href = "#top", .class = "top-link" }, &[_]ztlc.El{z.text("Back to top")}).el(),
+                    &[_]ztlc.Element{
+                        z.p(null, &[_]ztlc.Element{z.text("Footer content.")}),
+                        z.a(.{ .href = "#top", .class = "top-link" }, &[_]ztlc.Element{z.text("Back to top")}),
                     },
-                ).el(),
+                ),
             },
-        ).el(),
+        ),
     };
 
-    const html = z.html(.{ .lang = "en" }, &children).el();
+    const html = z.html(.{ .lang = "en" }, &children);
 
     // Setup timing
     var timer = try std.time.Timer.start();
@@ -92,41 +92,41 @@ fn benchmark(z: *ztl.ZTLBuilder, allocator: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
 
     // Create a more complex sample template that's closer to real-world usage
-    const children = [_]ztl.El{
-        z.h1(.{ .class = "title" }, &[_]ztl.El{z.text("Hello World")}).el(),
+    const children = [_]El{
+        z.h1(.{ .class = "title" }, &[_]El{z.text("Hello World")}),
         z.div(
             .{ .class = "container", .id = "main" },
-            &[_]ztl.El{
-                z.p(.{ .class = "intro" }, &[_]ztl.El{z.text("This is a paragraph with some text content.")}).el(),
-                z.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztl.El{z.text("Link to Example")}).el(),
+            &[_]El{
+                z.p(.{ .class = "intro" }, &[_]El{z.text("This is a paragraph with some text content.")}),
+                z.a(.{ .href = "https://example.com", .class = "link" }, &[_]El{z.text("Link to Example")}),
                 z.div(
                     .{ .class = "content" },
-                    &[_]ztl.El{
-                        z.p(null, &[_]ztl.El{z.text("Some more content here.")}).el(),
+                    &[_]El{
+                        z.p(null, &[_]El{z.text("Some more content here.")}),
                         z.ul(
                             ztl.Props{ .class = "list" },
-                            &[_]ztl.El{
-                                z.li(null, &[_]ztl.El{z.text("Item 1")}).el(),
-                                z.li(null, &[_]ztl.El{z.text("Item 2")}).el(),
-                                z.li(null, &[_]ztl.El{z.text("Item 3")}).el(),
-                                z.li(null, &[_]ztl.El{z.text("Item 4")}).el(),
-                                z.li(null, &[_]ztl.El{z.text("Item 5")}).el(),
+                            &[_]El{
+                                z.li(null, &[_]El{z.text("Item 1")}),
+                                z.li(null, &[_]El{z.text("Item 2")}),
+                                z.li(null, &[_]El{z.text("Item 3")}),
+                                z.li(null, &[_]El{z.text("Item 4")}),
+                                z.li(null, &[_]El{z.text("Item 5")}),
                             },
-                        ).el(),
+                        ),
                     },
-                ).el(),
+                ),
                 z.div(
                     .{ .class = "footer" },
-                    &[_]ztl.El{
-                        z.p(null, &[_]ztl.El{z.text("Footer content.")}).el(),
-                        z.a(.{ .href = "#top", .class = "top-link" }, &[_]ztl.El{z.text("Back to top")}).el(),
+                    &[_]El{
+                        z.p(null, &[_]El{z.text("Footer content.")}),
+                        z.a(.{ .href = "#top", .class = "top-link" }, &[_]El{z.text("Back to top")}),
                     },
-                ).el(),
+                ),
             },
-        ).el(),
+        ),
     };
 
-    const html = z.html(.{ .lang = "en" }, &children).el();
+    const html = z.html(.{ .lang = "en" }, &children);
 
     // Setup timing
     var timer = try std.time.Timer.start();
@@ -164,8 +164,8 @@ pub fn main() !void {
     const header = z.head(null, &[_]El{
         z.title(null, &[_]El{
             z.text("Test page"),
-        }).el(),
-    }).el();
+        }),
+    });
     const example = z.html(Props{
         .lang = "en-US",
         // children array must be passed as pointer
@@ -182,8 +182,8 @@ pub fn main() !void {
                 .class = "test",
             }, &[_]El{
                 z.text("test content"),
-            }).el(),
-        }).el(),
+            }),
+        }),
     });
     std.debug.print("example.type=\"{any}\"\n", .{@TypeOf(example)});
     std.debug.print("example.lang=\"{?s}\"\n", .{
@@ -237,8 +237,8 @@ test "basic ztl structure" {
     const markup = z.html(Props{
         .lang = "en-US",
     }, &[_]El{
-        z.head(null, null).el(),
-        z.body(null, null).el(),
+        z.head(null, null),
+        z.body(null, null),
     });
 
     if (markup.props) |props| {
@@ -256,8 +256,8 @@ test "basic render" {
     const markup = z.html(Props{
         .lang = "en-US",
     }, &[_]El{
-        z.head(null, null).el(),
-        z.body(null, null).el(),
+        z.head(null, null),
+        z.body(null, null),
     });
 
     var buf = std.ArrayList(u8).init(alloc);
@@ -313,9 +313,9 @@ test "dynamic render" {
 
     // add strings as p tags to elements arraylist
     for (strList.items) |item| {
-        const textEl = z.p(Props{
+        const textEl = z.p(.{
             .class = "text",
-        }, &[_]El{z.text(item)}).el();
+        }, &[_]El{z.text(item)});
         try textElList.append(textEl);
     }
 
@@ -324,23 +324,20 @@ test "dynamic render" {
     const children: []El = try textElList.toOwnedSlice();
 
     // build markup
-    var markup = z.html(Props{
+    var markup = z.html(.{
         .lang = "en-US",
     }, &[_]El{
-        z.head(null, null).el(),
-        z.body(null, children).el(),
+        z.head(null, null),
+        z.body(null, children),
     });
 
     // create buffer to hold element strings as they're rendered
     var buf = std.ArrayList(u8).init(alloc);
     defer buf.deinit();
 
-    const start = try std.time.Instant.now();
-
     // render markup and convert to string array
     try markup.render(&buf, false);
     const renderedText = try buf.toOwnedSlice();
-    const end = try std.time.Instant.now();
 
     try std.testing.expectEqualStrings(
         \\<!DOCTYPE html>
@@ -358,7 +355,6 @@ test "dynamic render" {
         \\</html>
         \\
     , renderedText);
-    std.debug.print("\nrender time: {d}ns\n", .{end.since(start)});
 
     // must free allocator at end of scope instead of deferring
     alloc.free(renderedText);
