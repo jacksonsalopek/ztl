@@ -15,42 +15,39 @@ Section in progress. Please refer to the tests in `src/main.zig` for example usa
 
 ```zig
 const std = @import("std");
-const z = @import("ztl");
-
-// alias ztl types for ease-of-use
-const El = z.El;
-const Props = z.Props;
-const Text = z.Text;
+const ztl = @import("ztl");
 
 pub fn main() !void {
-  // define markup
-  const markup = z.html(Props{
-    .lang = "en-US",
-  }, &[_]El{
-    z.body(null, &[_]El{
-      z.p(Props{
-        .class = "text",
-      }, &[_]El{Text("Hello from ztl!")}),
-    // must call el to convert BaseTag to El type.
-    // this is necessary since text is not a tag.
-    }).el(),
-  });
+    const alloc = std.testing.allocator;
+    var z = ztl.ZTLBuilder.init(alloc);
+    defer z.deinit();
 
-  // create allocator for writing to buffer
-  var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-  defer arena.deinit();
-  const alloc = arena.allocator();
-  
-  // create the buffer
-  var buf = std.ArrayList(u8).init(alloc);
-  defer buf.deinit();
-  
-  // first param is buffer to print to, second is whether to print compact or not
-  try markup.render(&buf, true);
-  const renderedMarkup = buf.toOwnedSlice();
+    const markup = z.html(Props{
+        .lang = "en-US",
+    }, &[_]El{
+        z.head(null, null).el(),
+        z.body(null, null).el(),
+    });
+
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+
+    try markup.render(&buf, true);
+    const renderedText = try buf.toOwnedSlice();
+    try std.testing.expectEqualStrings("<!DOCTYPE html><html lang=\"en-US\"><head></head><body></body></html>", renderedText);
+    alloc.free(renderedText);
 }
 ```
 
 ## Benchmarks
 
-Section in progress.
+Production-ready benchmarks are available in `src/main.zig`, which can be compiled with `zig build -Doptimize=ReleaseFast`.
+
+On M1 Max (Mac Studio 2022):
+```
+ztl.zig average render time: 2248ns, TPS: ~444,839
+ztlc.zig average render time: 2790ns, TPS: ~358,423
+```
+
+It is expected that the ztlc implementation will outperform the ztl implementation in most cases, but the ztl implementation is still faster in some cases. In static cases, such as the benchmark above, the ztl implementation is faster.
+In large dynamic cases, it is expected that the ztlc implementation will outperform the ztl implementation due to comptime tag caching.
