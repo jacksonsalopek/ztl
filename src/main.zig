@@ -6,21 +6,19 @@ const ztlc = @import("./ztlc.zig");
 const El = ztl.Element;
 const Props = ztl.Props;
 
-pub fn link(z: *ztl.Builder, title: []const u8, href: []const u8) El {
+pub fn link(z: *ztl.PanicBuilder, title: []const u8, href: []const u8) El {
     return z.span(.{
         .props = .{ .class = "mx-1" },
         .children = &[_]El{
             z.a(.{
                 .props = .{ .href = href, .class = "hover:text-blue-700 hover:underline" },
-                .children = &[_]El{
-                    z.text(title),
-                },
+                .children = &[_]El{z.text(title)},
             }),
         },
     });
 }
 
-pub fn testBase(z: *ztl.Builder, title: El) El {
+pub fn testBase(z: *ztl.PanicBuilder, title: El) El {
     return z.html(.{
         .props = .{ .lang = "en-US" },
         .children = &[_]El{
@@ -36,40 +34,40 @@ fn benchmarkZTLC(z: anytype, allocator: std.mem.Allocator) !void {
 
     // Create a more complex sample template that's closer to real-world usage
     const children = [_]ztlc.Element{
-        z.h1(.{ .class = "title" }, &[_]ztlc.Element{z.text("Hello World")}),
-        z.div(
+        try z.h1(.{ .class = "title" }, &[_]ztlc.Element{try z.text("Hello World")}),
+        try z.div(
             .{ .class = "container", .id = "main" },
             &[_]ztlc.Element{
-                z.p(.{ .class = "intro" }, &[_]ztlc.Element{z.text("This is a paragraph with some text content.")}),
-                z.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztlc.Element{z.text("Link to Example")}),
-                z.div(
+                try z.p(.{ .class = "intro" }, &[_]ztlc.Element{try z.text("This is a paragraph with some text content.")}),
+                try z.a(.{ .href = "https://example.com", .class = "link" }, &[_]ztlc.Element{try z.text("Link to Example")}),
+                try z.div(
                     .{ .class = "content" },
                     &[_]ztlc.Element{
-                        z.p(null, &[_]ztlc.Element{z.text("Some more content here.")}),
-                        z.ul(
+                        try z.p(null, &[_]ztlc.Element{try z.text("Some more content here.")}),
+                        try z.ul(
                             .{ .class = "list" },
                             &[_]ztlc.Element{
-                                z.li(null, &[_]ztlc.Element{z.text("Item 1")}),
-                                z.li(null, &[_]ztlc.Element{z.text("Item 2")}),
-                                z.li(null, &[_]ztlc.Element{z.text("Item 3")}),
-                                z.li(null, &[_]ztlc.Element{z.text("Item 4")}),
-                                z.li(null, &[_]ztlc.Element{z.text("Item 5")}),
+                                try z.li(null, &[_]ztlc.Element{try z.text("Item 1")}),
+                                try z.li(null, &[_]ztlc.Element{try z.text("Item 2")}),
+                                try z.li(null, &[_]ztlc.Element{try z.text("Item 3")}),
+                                try z.li(null, &[_]ztlc.Element{try z.text("Item 4")}),
+                                try z.li(null, &[_]ztlc.Element{try z.text("Item 5")}),
                             },
                         ),
                     },
                 ),
-                z.div(
+                try z.div(
                     .{ .class = "footer" },
                     &[_]ztlc.Element{
-                        z.p(null, &[_]ztlc.Element{z.text("Footer content.")}),
-                        z.a(.{ .href = "#top", .class = "top-link" }, &[_]ztlc.Element{z.text("Back to top")}),
+                        try z.p(null, &[_]ztlc.Element{try z.text("Footer content.")}),
+                        try z.a(.{ .href = "#top", .class = "top-link" }, &[_]ztlc.Element{try z.text("Back to top")}),
                     },
                 ),
             },
         ),
     };
 
-    const html = z.html(.{ .lang = "en" }, &children);
+    const html = try z.html(.{ .lang = "en" }, &children);
 
     // Setup timing
     var timer = try std.time.Timer.start();
@@ -94,28 +92,28 @@ fn benchmarkZTLC(z: anytype, allocator: std.mem.Allocator) !void {
     try stdout.print("Average render time: {d}ns\n", .{average_ns});
 }
 
-fn benchmarkPreallocated(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
+fn benchmarkPreallocated(z: *ztl.PanicBuilder, allocator: std.mem.Allocator) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
 
     const children = [_]El{
-        z.h1(.{ .props = .{ .class = "title" }, .children = &[_]El{z.text("Hello World")} }),
+        z.h1(.{ .props = .{ .class = "title" }, .children = &[_]El{ztl.t("Hello World")} }),
         z.div(.{
             .props = .{ .class = "container", .id = "main" },
             .children = &[_]El{
-                z.p(.{ .props = .{ .class = "intro" }, .children = &[_]El{z.text("This is a paragraph with some text content.")} }),
-                z.a(.{ .props = .{ .href = "https://example.com", .class = "link" }, .children = &[_]El{z.text("Link to Example")} }),
+                z.p(.{ .props = .{ .class = "intro" }, .children = &[_]El{ztl.t("This is a paragraph with some text content.")} }),
+                z.a(.{ .props = .{ .href = "https://example.com", .class = "link" }, .children = &[_]El{ztl.t("Link to Example")} }),
                 z.div(.{
                     .props = .{ .class = "content" },
                     .children = &[_]El{
-                        z.p(.{ .children = &[_]El{z.text("Some more content here.")} }),
+                        z.p(.{ .children = &[_]El{ztl.t("Some more content here.")} }),
                         z.ul(.{
                             .props = .{ .class = "list" },
                             .children = &[_]El{
-                                z.li(.{ .children = &[_]El{z.text("Item 1")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 2")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 3")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 4")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 5")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 1")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 2")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 3")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 4")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 5")} }),
                             },
                         }),
                     },
@@ -123,8 +121,8 @@ fn benchmarkPreallocated(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
                 z.div(.{
                     .props = .{ .class = "footer" },
                     .children = &[_]El{
-                        z.p(.{ .children = &[_]El{z.text("Footer content.")} }),
-                        z.a(.{ .props = .{ .href = "#top", .class = "top-link" }, .children = &[_]El{z.text("Back to top")} }),
+                        z.p(.{ .children = &[_]El{ztl.t("Footer content.")} }),
+                        z.a(.{ .props = .{ .href = "#top", .class = "top-link" }, .children = &[_]El{ztl.t("Back to top")} }),
                     },
                 }),
             },
@@ -154,29 +152,28 @@ fn benchmarkPreallocated(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
 }
 
 // Benchmark function for ztl.zig
-fn benchmark(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
+fn benchmark(z: *ztl.PanicBuilder, allocator: std.mem.Allocator) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
 
-    // Create a more complex sample template that's closer to real-world usage
     const children = [_]El{
-        z.h1(.{ .props = .{ .class = "title" }, .children = &[_]El{z.text("Hello World")} }),
+        z.h1(.{ .props = .{ .class = "title" }, .children = &[_]El{ztl.t("Hello World")} }),
         z.div(.{
             .props = .{ .class = "container", .id = "main" },
             .children = &[_]El{
-                z.p(.{ .props = .{ .class = "intro" }, .children = &[_]El{z.text("This is a paragraph with some text content.")} }),
-                z.a(.{ .props = .{ .href = "https://example.com", .class = "link" }, .children = &[_]El{z.text("Link to Example")} }),
+                z.p(.{ .props = .{ .class = "intro" }, .children = &[_]El{ztl.t("This is a paragraph with some text content.")} }),
+                z.a(.{ .props = .{ .href = "https://example.com", .class = "link" }, .children = &[_]El{ztl.t("Link to Example")} }),
                 z.div(.{
                     .props = .{ .class = "content" },
                     .children = &[_]El{
-                        z.p(.{ .children = &[_]El{z.text("Some more content here.")} }),
+                        z.p(.{ .children = &[_]El{ztl.t("Some more content here.")} }),
                         z.ul(.{
                             .props = .{ .class = "list" },
                             .children = &[_]El{
-                                z.li(.{ .children = &[_]El{z.text("Item 1")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 2")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 3")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 4")} }),
-                                z.li(.{ .children = &[_]El{z.text("Item 5")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 1")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 2")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 3")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 4")} }),
+                                z.li(.{ .children = &[_]El{ztl.t("Item 5")} }),
                             },
                         }),
                     },
@@ -184,8 +181,8 @@ fn benchmark(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
                 z.div(.{
                     .props = .{ .class = "footer" },
                     .children = &[_]El{
-                        z.p(.{ .children = &[_]El{z.text("Footer content.")} }),
-                        z.a(.{ .props = .{ .href = "#top", .class = "top-link" }, .children = &[_]El{z.text("Back to top")} }),
+                        z.p(.{ .children = &[_]El{ztl.t("Footer content.")} }),
+                        z.a(.{ .props = .{ .href = "#top", .class = "top-link" }, .children = &[_]El{ztl.t("Back to top")} }),
                     },
                 }),
             },
@@ -194,12 +191,10 @@ fn benchmark(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
 
     const html = z.html(.{ .props = .{ .lang = "en" }, .children = &children });
 
-    // Setup timing
     var timer = try std.time.Timer.start();
-    const iterations: usize = 10000; // More iterations for better average
+    const iterations: usize = 10000;
     var total_ns: u64 = 0;
 
-    // Warmup (to ensure fair comparison)
     for (0..100) |_| {
         var buf = std.ArrayList(u8){};
         try html.render(&buf, allocator, false);
@@ -207,7 +202,6 @@ fn benchmark(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
         allocator.free(html_string);
     }
 
-    // Run the benchmark
     for (0..iterations) |_| {
         timer.reset();
         var buf = std.ArrayList(u8){};
@@ -224,12 +218,12 @@ fn benchmark(z: *ztl.Builder, allocator: std.mem.Allocator) !void {
 pub fn main() !void {
     std.debug.print("Running ztl example...\n", .{});
     const alloc = std.heap.page_allocator;
-    var z = ztl.Builder.init(alloc);
+    var z = ztl.PanicBuilder.init(alloc);
     defer z.deinit();
 
     const header = z.head(.{
         .children = &[_]El{
-            z.title(.{ .children = &[_]El{z.text("Test page")} }),
+            z.title(.{ .children = &[_]El{ztl.t("Test page")} }),
         },
     });
     const example = z.html(.{
@@ -241,7 +235,7 @@ pub fn main() !void {
                 .children = &[_]El{
                     z.div(.{
                         .props = .{ .id = "app", .class = "test" },
-                        .children = &[_]El{z.text("test content")},
+                        .children = &[_]El{ztl.t("test content")},
                     }),
                 },
             }),
@@ -267,28 +261,21 @@ pub fn main() !void {
     }
 
     const start = try std.time.Instant.now();
-
-    var buf = std.ArrayList(u8){};
-    defer buf.deinit(alloc);
-    try example.render(&buf, alloc, true);
-    const rendered_text = try buf.toOwnedSlice(alloc);
+    const rendered_text = try z.renderToString(example, true);
     const end = try std.time.Instant.now();
+    defer alloc.free(rendered_text);
     std.debug.print("\n\nrender output:\n{s}\n", .{rendered_text});
     std.debug.print("\nrender time: {d}ns\n", .{end.since(start)});
 
-    // benchmark initial implementation
     std.debug.print("\n=== ZTL Benchmark (manual buffer) ===\n", .{});
     try benchmark(&z, alloc);
 
-    // benchmark with pre-allocation
     std.debug.print("\n=== ZTL Benchmark (renderToString with pre-allocation) ===\n", .{});
     try benchmarkPreallocated(&z, alloc);
 
-    // Create the Builder and properly handle the error
     std.debug.print("\n=== ZTLC Benchmark (renderToString with pre-allocation) ===\n", .{});
-    var zc = try ztlc.Builder.init(alloc);
+    var zc = ztlc.Builder.init(alloc);
     defer zc.deinit();
-
     try benchmarkZTLC(&zc, alloc);
 }
 
@@ -297,11 +284,11 @@ test "basic ztl structure" {
     var z = ztl.Builder.init(alloc);
     defer z.deinit();
 
-    const markup = z.html(.{
+    const markup = try z.html(.{
         .props = .{ .lang = "en-US" },
         .children = &[_]El{
-            z.head(.{}),
-            z.body(.{}),
+            try z.head(.{}),
+            try z.body(.{}),
         },
     });
 
@@ -321,11 +308,11 @@ test "basic render" {
     var z = ztl.Builder.init(alloc);
     defer z.deinit();
 
-    const markup = z.html(.{
+    const markup = try z.html(.{
         .props = .{ .lang = "en-US" },
         .children = &[_]El{
-            z.head(.{}),
-            z.body(.{}),
+            try z.head(.{}),
+            try z.body(.{}),
         },
     });
 
@@ -343,7 +330,7 @@ test "html partial render" {
     var z = ztl.Builder.init(alloc);
     defer z.deinit();
 
-    const markup = z.p(.{ .children = &[_]El{z.text("test")} });
+    const markup = try z.p(.{ .children = &[_]El{ztl.t("test")} });
 
     var buf = std.ArrayList(u8){};
     defer buf.deinit(alloc);
@@ -382,9 +369,9 @@ test "dynamic render" {
 
     // add strings as p tags to elements arraylist
     for (strList.items) |item| {
-        const textEl = z.p(.{
+        const textEl = try z.p(.{
             .props = .{ .class = "text" },
-            .children = &[_]El{z.text(item)},
+            .children = &[_]El{try z.text(item)},
         });
         try textElList.append(alloc, textEl);
     }
@@ -394,11 +381,11 @@ test "dynamic render" {
     const children: []El = try textElList.toOwnedSlice(alloc);
 
     // build markup
-    const markup = z.html(.{
+    const markup = try z.html(.{
         .props = .{ .lang = "en-US" },
         .children = &[_]El{
-            z.head(.{}),
-            z.body(.{ .children = children }),
+            try z.head(.{}),
+            try z.body(.{ .children = children }),
         },
     });
 
@@ -434,11 +421,10 @@ test "dynamic render" {
 
 test "layout + component structure" {
     const alloc = std.testing.allocator;
-    var z = ztl.Builder.init(alloc);
+    var z = ztl.PanicBuilder.init(alloc);
     defer z.deinit();
 
-    const page_title = z.text("Apps");
-    const markup = testBase(&z, page_title);
+    const markup = testBase(&z, ztl.t("Apps"));
 
     var buf = std.ArrayList(u8){};
     defer buf.deinit(alloc);
@@ -466,9 +452,9 @@ test "strong typed props - boolean attributes" {
     var z = ztl.Builder.init(alloc);
     defer z.deinit();
 
-    const checkbox = z.div(.{
+    const checkbox = try z.div(.{
         .children = &[_]El{
-            z.div(.{
+            try z.div(.{
                 .props = .{
                     .type = "checkbox",
                     .checked = true,
@@ -493,7 +479,7 @@ test "strong typed props - numeric attributes" {
     var z = ztl.Builder.init(alloc);
     defer z.deinit();
 
-    const image = z.img(.{
+    const image = try z.img(.{
         .props = .{
             .src = "/test.png",
             .width = 800,
@@ -517,13 +503,13 @@ test "helper methods - accessing element properties" {
     var z = ztl.Builder.init(alloc);
     defer z.deinit();
 
-    const elem = z.div(.{
+    const elem = try z.div(.{
         .props = .{
             .id = "container",
             .class = "main-content",
         },
         .children = &[_]El{
-            z.p(.{ .children = &[_]El{z.text("Hello")} }),
+            try z.p(.{ .children = &[_]El{ztl.t("Hello")} }),
         },
     });
 
@@ -536,4 +522,455 @@ test "helper methods - accessing element properties" {
 
     const text_node = child.getChild(0).?;
     try std.testing.expectEqualStrings("Hello", text_node.getText().?);
+}
+
+test "html escaping - basic entities" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.p(.{ .children = &[_]El{ztl.t("<script>alert('xss')</script>")} });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<p>&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;</p>",
+        html,
+    );
+}
+
+test "html escaping - all special characters" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.div(.{ .children = &[_]El{ztl.t("& < > \" ' test")} });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<div>&amp; &lt; &gt; &quot; &#39; test</div>",
+        html,
+    );
+}
+
+test "html escaping - no unnecessary escaping" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.p(.{ .children = &[_]El{ztl.t("Normal text with no special chars")} });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<p>Normal text with no special chars</p>",
+        html,
+    );
+}
+
+test "unsafeText - no escaping" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.div(.{ .children = &[_]El{try z.unsafeText("<em>pre-escaped</em> HTML")} });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<div><em>pre-escaped</em> HTML</div>",
+        html,
+    );
+}
+
+test "union content - text variant" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.h1(.{ .content = .{ .text = "Hello World" } });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings("<h1>Hello World</h1>", html);
+}
+
+test "union content - text with props" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.p(.{
+        .props = .{ .class = "intro" },
+        .content = .{ .text = "Introduction text" },
+    });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<p class=\"intro\">Introduction text</p>",
+        html,
+    );
+}
+
+test "union content - elements variant" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.div(.{
+        .content = .{ .elements = &[_]El{
+            try z.h1(.{ .content = .{ .text = "Title" } }),
+            try z.p(.{ .content = .{ .text = "Content" } }),
+        } },
+    });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<div><h1>Title</h1><p>Content</p></div>",
+        html,
+    );
+}
+
+test "union content - text is escaped" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.div(.{ .content = .{ .text = "<script>alert('xss')</script>" } });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<div>&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;</div>",
+        html,
+    );
+}
+
+test "union content - nested with escaping" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.article(.{
+        .props = .{ .class = "post" },
+        .content = .{ .elements = &[_]El{
+            try z.h2(.{ .content = .{ .text = "Post Title & More" } }),
+            try z.p(.{ .content = .{ .text = "Content with <tags>" } }),
+        } },
+    });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expect(std.mem.indexOf(u8, html, "Post Title &amp; More") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "Content with &lt;tags&gt;") != null);
+}
+
+test "new html elements - semantic html5" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const page = try z.html(.{
+        .children = &[_]El{
+            try z.body(.{ .children = &[_]El{
+                try z.header(.{ .content = .{ .text = "Header" } }),
+                try z.main(.{ .children = &[_]El{
+                    try z.article(.{ .children = &[_]El{
+                        try z.section(.{ .content = .{ .text = "Section content" } }),
+                    } }),
+                    try z.aside(.{ .content = .{ .text = "Sidebar" } }),
+                } }),
+                try z.footer(.{ .content = .{ .text = "Footer" } }),
+            } }),
+        },
+    });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try page.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expect(std.mem.indexOf(u8, html, "<header>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<main>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<article>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<section>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<aside>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<footer>") != null);
+}
+
+test "new html elements - form elements" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const form = try z.form(.{
+        .props = .{ .id = "test-form" },
+        .children = &[_]El{
+            try z.fieldset(.{ .children = &[_]El{
+                try z.legend(.{ .content = .{ .text = "User Info" } }),
+                try z.label(.{ .content = .{ .text = "Username:" } }),
+                try z.input(.{ .props = .{ .type = "text", .name = "username" } }),
+                try z.label(.{ .content = .{ .text = "Bio:" } }),
+                try z.textarea(.{ .props = .{ .name = "bio" } }),
+                try z.label(.{ .content = .{ .text = "Country:" } }),
+                try z.select(.{
+                    .props = .{ .name = "country" },
+                    .children = &[_]El{
+                        try z.option(.{ .props = .{ .value = "us" }, .content = .{ .text = "USA" } }),
+                        try z.option(.{ .props = .{ .value = "uk" }, .content = .{ .text = "UK" } }),
+                    },
+                }),
+                try z.button(.{ .props = .{ .type = "submit" }, .content = .{ .text = "Submit" } }),
+            } }),
+        },
+    });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try form.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expect(std.mem.indexOf(u8, html, "<form") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<fieldset>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<legend>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<label>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<input") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<textarea") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<select") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<option") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<button") != null);
+}
+
+test "new html elements - text formatting" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const content = try z.div(.{ .children = &[_]El{
+        try z.pre(.{ .children = &[_]El{
+            try z.code(.{ .content = .{ .text = "const x = 42;" } }),
+        } }),
+        try z.blockquote(.{ .children = &[_]El{
+            try z.p(.{ .content = .{ .text = "A famous quote." } }),
+            try z.cite(.{ .content = .{ .text = "Author Name" } }),
+        } }),
+        try z.p(.{ .children = &[_]El{
+            ztl.t("Press "),
+            try z.kbd(.{ .content = .{ .text = "Ctrl+C" } }),
+            ztl.t(" to copy. Output: "),
+            try z.samp(.{ .content = .{ .text = "Success!" } }),
+        } }),
+        try z.figure(.{ .children = &[_]El{
+            try z.img(.{ .props = .{ .src = "/image.png", .alt = "Test" } }),
+            try z.figcaption(.{ .content = .{ .text = "Image caption" } }),
+        } }),
+    } });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try content.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expect(std.mem.indexOf(u8, html, "<pre>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<code>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<blockquote>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<cite>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<kbd>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<samp>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<figure>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<figcaption>") != null);
+}
+
+test "writer api - basic rendering" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.div(.{
+        .props = .{ .class = "container" },
+        .children = &[_]El{
+            try z.h1(.{ .content = .{ .text = "Title" } }),
+            try z.p(.{ .content = .{ .text = "Paragraph with <special> chars" } }),
+        },
+    });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.renderToWriter(buf.writer(alloc), alloc, true);
+
+    const html = buf.items;
+    try std.testing.expect(std.mem.indexOf(u8, html, "<div class=\"container\">") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<h1>Title</h1>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "&lt;special&gt;") != null);
+}
+
+test "writer api - streaming to buffer" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const page = try z.html(.{
+        .props = .{ .lang = "en" },
+        .children = &[_]El{
+            try z.head(.{ .children = &[_]El{
+                try z.title(.{ .content = .{ .text = "Test Page" } }),
+            } }),
+            try z.body(.{ .children = &[_]El{
+                try z.h1(.{ .content = .{ .text = "Hello World" } }),
+            } }),
+        },
+    });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try page.renderToWriter(buf.writer(alloc), alloc, false);
+
+    const html = buf.items;
+    try std.testing.expect(std.mem.indexOf(u8, html, "<!DOCTYPE html>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<html lang=\"en\">") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<title>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "Test Page") != null);
+}
+
+test "ztl.t - static text node renders without allocation" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.p(.{ .children = &[_]El{ztl.t("Hello, world!")} });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings("<p>Hello, world!</p>", html);
+}
+
+test "ztl.t - static text is html-escaped" {
+    const alloc = std.testing.allocator;
+    var z = ztl.Builder.init(alloc);
+    defer z.deinit();
+
+    const elem = try z.div(.{ .children = &[_]El{ztl.t("<b>bold</b> & safe")} });
+
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(alloc);
+    try elem.render(&buf, alloc, true);
+    const html = try buf.toOwnedSlice(alloc);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings("<div>&lt;b&gt;bold&lt;/b&gt; &amp; safe</div>", html);
+}
+
+test "ztl.t - getText returns the string" {
+    const elem = ztl.t("hello");
+    try std.testing.expectEqualStrings("hello", elem.getText().?);
+}
+
+test "PanicBuilder - basic rendering without try" {
+    const alloc = std.testing.allocator;
+    var z = ztl.PanicBuilder.init(alloc);
+    defer z.deinit();
+
+    const page = z.html(.{
+        .props = .{ .lang = "en-US" },
+        .children = &[_]El{
+            z.head(.{}),
+            z.body(.{
+                .children = &[_]El{
+                    z.h1(.{ .content = .{ .text = "Hello" } }),
+                    z.p(.{ .content = .{ .text = "World" } }),
+                },
+            }),
+        },
+    });
+
+    const html = try z.renderToString(page, true);
+    defer alloc.free(html);
+
+    try std.testing.expect(std.mem.indexOf(u8, html, "<!DOCTYPE html>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<html lang=\"en-US\">") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<h1>Hello</h1>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, html, "<p>World</p>") != null);
+}
+
+test "PanicBuilder - with ztl.t() for zero-allocation literals" {
+    const alloc = std.testing.allocator;
+    var z = ztl.PanicBuilder.init(alloc);
+    defer z.deinit();
+
+    const page = z.div(.{
+        .props = .{ .class = "container" },
+        .children = &[_]El{
+            z.h1(.{ .children = &[_]El{ztl.t("Static Title")} }),
+            z.p(.{ .children = &[_]El{ztl.t("Static paragraph.")} }),
+        },
+    });
+
+    const html = try z.renderToString(page, true);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings(
+        "<div class=\"container\"><h1>Static Title</h1><p>Static paragraph.</p></div>",
+        html,
+    );
+}
+
+test "PanicBuilder - text() for runtime strings" {
+    const alloc = std.testing.allocator;
+    var z = ztl.PanicBuilder.init(alloc);
+    defer z.deinit();
+
+    var buf: [64]u8 = undefined;
+    const username = std.fmt.bufPrint(&buf, "User #{d}", .{42}) catch unreachable;
+
+    const elem = z.p(.{ .children = &[_]El{z.text(username)} });
+    const html = try z.renderToString(elem, true);
+    defer alloc.free(html);
+
+    try std.testing.expectEqualStrings("<p>User #42</p>", html);
 }

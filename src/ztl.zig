@@ -1,27 +1,66 @@
 const std = @import("std");
+const core = @import("html_core.zig");
 
-// Helper type for string literal
-pub const Str = []const u8;
+pub const Str = core.Str;
+const INITIAL_BUFFER_SIZE = core.INITIAL_BUFFER_SIZE;
+pub const RenderError = core.RenderError;
+const escapeHtml = core.escapeHtml;
 
-// Pre-defined buffer size for initial allocation
-const INITIAL_BUFFER_SIZE = 4096;
-
-// HTML elements are either text or DOM objects
+/// HTML element - either a text node or a DOM element with tag, props, and children.
+///
+/// Text nodes are automatically HTML-escaped during rendering to prevent XSS.
+/// Use Element.render() to convert to HTML string.
 pub const Element = union(enum) {
     base: BaseTag,
     text: []u8,
+    unsafe_text: []u8,
+    /// Borrowed string (e.g. a string literal) — HTML-escaped on render, never freed.
+    static_text: []const u8,
 
     fn isText(self: Element) bool {
         return switch (self) {
-            .text => true,
+            .text, .unsafe_text, .static_text => true,
             else => false,
         };
     }
 
-    pub fn render(self: Element, buf: *std.ArrayList(u8), allocator: std.mem.Allocator, compact: bool) !void {
+    pub fn render(self: Element, buf: *std.ArrayList(u8), allocator: std.mem.Allocator, compact: bool) std.mem.Allocator.Error!void {
         switch (self) {
             .base => |base| try base.render(buf, allocator, compact),
-            .text => |text| try buf.appendSlice(allocator, text),
+            .text => |text| try core.escapeHtmlToBuffer(buf, allocator, text),
+            .unsafe_text => |text| try buf.appendSlice(allocator, text),
+            .static_text => |text| try core.escapeHtmlToBuffer(buf, allocator, text),
+        }
+    }
+
+    /// Render element directly to a Writer for streaming output.
+    ///
+    /// This method avoids allocating a full buffer, making it suitable for
+    /// large templates or when streaming to a network socket or file.
+    ///
+    /// Arguments:
+    ///     writer: Any type with a write() method (e.g., std.fs.File.Writer)
+    ///     allocator: Allocator for temporary escape buffers
+    ///     compact: If true, omit newlines and unnecessary whitespace
+    ///
+    /// Example:
+    ///     const file = try std.fs.cwd().createFile("output.html", .{});
+    ///     defer file.close();
+    ///     try element.renderToWriter(file.writer(), allocator, false);
+    pub fn renderToWriter(self: Element, writer: anytype, allocator: std.mem.Allocator, compact: bool) (@TypeOf(writer).Error || std.mem.Allocator.Error)!void {
+        switch (self) {
+            .base => |base| try base.renderToWriter(writer, allocator, compact),
+            .text => |text| {
+                const escaped = try escapeHtml(allocator, text);
+                defer allocator.free(escaped);
+                try writer.writeAll(escaped);
+            },
+            .unsafe_text => |text| try writer.writeAll(text),
+            .static_text => |text| {
+                const escaped = try escapeHtml(allocator, text);
+                defer allocator.free(escaped);
+                try writer.writeAll(escaped);
+            },
         }
     }
 
@@ -29,21 +68,21 @@ pub const Element = union(enum) {
     pub fn getTag(self: Element) ?[]const u8 {
         return switch (self) {
             .base => |base| base.tag,
-            .text => null,
+            .text, .unsafe_text, .static_text => null,
         };
     }
 
     pub fn getProps(self: Element) ?Props {
         return switch (self) {
             .base => |base| base.props,
-            .text => null,
+            .text, .unsafe_text, .static_text => null,
         };
     }
 
     pub fn getChildren(self: Element) ?[]const Element {
         return switch (self) {
             .base => |base| base.children,
-            .text => null,
+            .text, .unsafe_text, .static_text => null,
         };
     }
 
@@ -57,7 +96,7 @@ pub const Element = union(enum) {
                 }
                 return null;
             },
-            .text => null,
+            .text, .unsafe_text, .static_text => null,
         };
     }
 
@@ -69,7 +108,7 @@ pub const Element = union(enum) {
                 }
                 return null;
             },
-            .text => null,
+            .text, .unsafe_text, .static_text => null,
         };
     }
 
@@ -81,131 +120,70 @@ pub const Element = union(enum) {
                 }
                 return null;
             },
-            .text => null,
+            .text, .unsafe_text, .static_text => null,
         };
     }
 
     pub fn getText(self: Element) ?[]const u8 {
         return switch (self) {
             .text => |text| text,
+            .unsafe_text => |text| text,
+            .static_text => |text| text,
             .base => null,
         };
     }
 };
 
+/// Create a text node from a string literal without allocating.
+///
+/// The string is HTML-escaped during rendering. The caller is responsible
+/// for ensuring `str` outlives the element tree — string literals always
+/// satisfy this requirement.
+///
+/// Contrast with `Builder.text()`, which copies the string and is
+/// appropriate for runtime strings (e.g. values from a database query).
+///
+/// Example:
+///     .children = &[_]Element{ ztl.t("Hello, world!") }
+pub fn t(str: []const u8) Element {
+    return .{ .static_text = str };
+}
+
 // Helper type for element children
 pub const Children = ?[]const Element;
 
-// Options struct for element creation
+/// Content union for ergonomic text or element specification.
+///
+/// Allows passing either a text string or an array of elements.
+/// When using .text, the content is automatically wrapped in a text node.
+///
+/// Example:
+///     .content = .{ .text = "Hello" }
+///     .content = .{ .elements = &[_]Element{...} }
+pub const Content = union(enum) {
+    text: []const u8,
+    elements: []const Element,
+};
+
+/// Options for creating HTML elements.
+///
+/// Supports three ways to specify content:
+/// 1. .children - Traditional array of elements
+/// 2. .content = .{ .text = "..." } - Ergonomic text content
+/// 3. .content = .{ .elements = &[_]Element{...} } - Alternative to children
+///
+/// Example:
+///     .{ .props = .{ .class = "container" }, .content = .{ .text = "Hello" } }
 pub const ElementOpts = struct {
     props: ?Props = null,
     children: ?[]const Element = null,
+    content: ?Content = null,
 };
 
-fn writeAttr(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, name: []const u8, value: []const u8) !void {
-    const total_length = 1 + name.len + 2 + value.len + 1;
-    try buf.ensureUnusedCapacity(allocator, total_length);
+const writeAttr = core.writeAttr;
 
-    const start_len = buf.items.len;
-    buf.items.len += total_length;
-
-    var dest = buf.items[start_len..];
-    dest[0] = ' ';
-    @memcpy(dest[1 .. 1 + name.len], name);
-    dest[1 + name.len] = '=';
-    dest[2 + name.len] = '"';
-    @memcpy(dest[3 + name.len .. 3 + name.len + value.len], value);
-    dest[3 + name.len + value.len] = '"';
-}
-
-pub const ARIAProps = struct {
-    activedescendant: ?Str = null,
-    checked: ?Str = null,
-    controls: ?Str = null,
-    describedby: ?Str = null,
-    disabled: ?Str = null,
-    expanded: ?Str = null,
-    hidden: ?Str = null,
-    label: ?Str = null,
-    labelledby: ?Str = null,
-    live: ?Str = null,
-    owns: ?Str = null,
-    pressed: ?Str = null,
-    role: ?Str = null,
-    selected: ?Str = null,
-
-    pub fn render(self: ARIAProps, buf: *std.ArrayList(u8), allocator: std.mem.Allocator) !void {
-        const props = [_]struct { name: []const u8, value: ?Str }{
-            .{ .name = "aria-activedescendent", .value = self.activedescendant },
-            .{ .name = "aria-checked", .value = self.checked },
-            .{ .name = "aria-controls", .value = self.controls },
-            .{ .name = "aria-describedby", .value = self.describedby },
-            .{ .name = "aria-disabled", .value = self.disabled },
-            .{ .name = "aria-expanded", .value = self.expanded },
-            .{ .name = "aria-hidden", .value = self.hidden },
-            .{ .name = "aria-label", .value = self.label },
-            .{ .name = "aria-labelledby", .value = self.labelledby },
-            .{ .name = "aria-live", .value = self.live },
-            .{ .name = "aria-owns", .value = self.owns },
-            .{ .name = "aria-pressed", .value = self.pressed },
-            .{ .name = "aria-role", .value = self.role },
-            .{ .name = "aria-selected", .value = self.selected },
-        };
-
-        for (props) |prop| {
-            if (prop.value) |value| {
-                try writeAttr(buf, allocator, prop.name, value);
-            }
-        }
-    }
-};
-
-// See htmx.org for more info on HTMX
-pub const HTMXProps = struct {
-    boost: ?Str = null,
-    delete: ?Str = null,
-    encoding: ?Str = null,
-    get: ?Str = null,
-    headers: ?Str = null,
-    params: ?Str = null,
-    patch: ?Str = null,
-    pushURL: ?Str = null,
-    put: ?Str = null,
-    post: ?Str = null,
-    select: ?Str = null,
-    selectOOB: ?Str = null,
-    swap: ?Str = null,
-    swapOOB: ?Str = null,
-    target: ?Str = null,
-    vals: ?Str = null,
-
-    pub fn render(self: HTMXProps, buf: *std.ArrayList(u8), allocator: std.mem.Allocator) !void {
-        const props = [_]struct { name: []const u8, value: ?Str }{
-            .{ .name = "hx-boost", .value = self.boost },
-            .{ .name = "hx-delete", .value = self.delete },
-            .{ .name = "hx-encoding", .value = self.encoding },
-            .{ .name = "hx-get", .value = self.get },
-            .{ .name = "hx-headers", .value = self.headers },
-            .{ .name = "hx-params", .value = self.params },
-            .{ .name = "hx-patch", .value = self.patch },
-            .{ .name = "hx-push-url", .value = self.pushURL },
-            .{ .name = "hx-put", .value = self.put },
-            .{ .name = "hx-post", .value = self.post },
-            .{ .name = "hx-select", .value = self.select },
-            .{ .name = "hx-select-oob", .value = self.selectOOB },
-            .{ .name = "hx-swap", .value = self.swap },
-            .{ .name = "hx-swap-oob", .value = self.swapOOB },
-            .{ .name = "hx-target", .value = self.target },
-            .{ .name = "hx-vals", .value = self.vals },
-        };
-
-        for (props) |prop| {
-            if (prop.value) |value| {
-                try writeAttr(buf, allocator, prop.name, value);
-            }
-        }
-    }
-};
+pub const ARIAProps = core.ARIAProps;
+pub const HTMXProps = core.HTMXProps;
 
 // DOM properties for HTML elements
 // Currently doesn't support data- props
@@ -232,7 +210,8 @@ pub const Props = struct {
     value: ?Str = null,
     width: ?u32 = null,
 
-    pub fn render(self: Props, buf: *std.ArrayList(u8), allocator: std.mem.Allocator) !void {
+    /// Optimization: Inline to reduce function call overhead on hot path
+    pub inline fn render(self: Props, buf: *std.ArrayList(u8), allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
         if (self.aria) |aria| {
             try aria.render(buf, allocator);
         }
@@ -295,76 +274,15 @@ pub const Props = struct {
     }
 };
 
-const TagCache = struct {
-    open_prefix: []const u8,
-    close_tag: []const u8,
-};
-
-const TagCacheEntry = struct {
-    tag: []const u8,
-    cache: TagCache,
-};
-
-const ComptimeTagCache = struct {
-    const common_tags = [_][]const u8{ "html", "head", "body", "div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6", "a", "ul", "ol", "li", "table", "tr", "td", "th", "nav", "img", "link", "meta", "script", "title", "b", "i", "hr" };
-
-    fn makeTagCacheEntries() [common_tags.len]TagCacheEntry {
-        var result: [common_tags.len]TagCacheEntry = undefined;
-
-        inline for (common_tags, 0..) |tag, i| {
-            const open_prefix = "<" ++ tag;
-            const close_tag = "</" ++ tag ++ ">";
-
-            result[i] = .{
-                .tag = tag,
-                .cache = TagCache{
-                    .open_prefix = open_prefix,
-                    .close_tag = close_tag,
-                },
-            };
-        }
-
-        return result;
-    }
-
-    const entries = makeTagCacheEntries();
-};
-
-fn getTagFromCache(tag: []const u8) ?TagCache {
-    inline for (ComptimeTagCache.entries) |entry| {
-        if (std.mem.eql(u8, tag, entry.tag)) {
-            return entry.cache;
-        }
-    }
-    return null;
-}
+const getTagFromCache = core.getTagFromCache;
 
 pub const BaseTag = struct {
     tag: Str,
     children: Children,
     props: ?Props = null,
 
-    pub fn render(self: BaseTag, buf: *std.ArrayList(u8), allocator: std.mem.Allocator, compact: bool) anyerror!void {
-        if (std.mem.eql(u8, self.tag, "html")) {
-            const doctype = if (compact) "<!DOCTYPE html><html" else "<!DOCTYPE html>\n<html";
-            try buf.appendSlice(allocator, doctype);
-        } else {
-            if (getTagFromCache(self.tag)) |cached| {
-                try buf.appendSlice(allocator, cached.open_prefix);
-            } else {
-                try buf.appendSlice(allocator, "<");
-                try buf.appendSlice(allocator, self.tag);
-            }
-        }
-
-        if (self.props) |props| {
-            try props.render(buf, allocator);
-        }
-
-        try buf.appendSlice(allocator, ">");
-        if (!compact) {
-            try buf.appendSlice(allocator, "\n");
-        }
+    pub fn render(self: BaseTag, buf: *std.ArrayList(u8), allocator: std.mem.Allocator, compact: bool) std.mem.Allocator.Error!void {
+        try core.renderOpenTag(buf, allocator, self.tag, self.props, compact);
 
         if (self.children) |children| {
             for (children) |child| {
@@ -372,17 +290,19 @@ pub const BaseTag = struct {
             }
         }
 
-        if (getTagFromCache(self.tag)) |cached| {
-            try buf.appendSlice(allocator, cached.close_tag);
-        } else {
-            try buf.appendSlice(allocator, "</");
-            try buf.appendSlice(allocator, self.tag);
-            try buf.appendSlice(allocator, ">");
+        try core.renderCloseTag(buf, allocator, self.tag, compact);
+    }
+
+    pub fn renderToWriter(self: BaseTag, writer: anytype, allocator: std.mem.Allocator, compact: bool) (@TypeOf(writer).Error || std.mem.Allocator.Error)!void {
+        try core.renderOpenTagToWriter(writer, allocator, self.tag, self.props, compact);
+
+        if (self.children) |children| {
+            for (children) |child| {
+                try child.renderToWriter(writer, allocator, compact);
+            }
         }
 
-        if (!compact) {
-            try buf.appendSlice(allocator, "\n");
-        }
+        try core.renderCloseTagToWriter(writer, self.tag, compact);
     }
 
     pub fn el(self: BaseTag) Element {
@@ -392,7 +312,10 @@ pub const BaseTag = struct {
 
 fn estimateSize(element: Element, compact: bool) usize {
     return switch (element) {
-        .text => |text| text.len,
+        // Optimization: Assume 12.5% overhead for HTML escaping instead of 100%
+        // Most text has <5% special chars, but we add safety margin
+        .text, .static_text => |text| text.len + (text.len / 8),
+        .unsafe_text => |text| text.len,
         .base => |base| estimateBaseTagSize(base, compact),
     };
 }
@@ -432,13 +355,28 @@ fn estimatePropsSize(props: Props) usize {
         const value = @field(props, field.name);
         if (field.type == ?Str) {
             if (value) |v| {
+                // attr format: space + name + ="value"
                 size += 4 + field.name.len + v.len;
+            }
+        } else if (field.type == ?bool) {
+            // Boolean props like checked="checked" when true
+            if (value) |val| {
+                if (val) {
+                    // space + name + ="name"
+                    size += 4 + field.name.len + field.name.len;
+                }
+            }
+        } else if (field.type == ?u32) {
+            // Numeric props need ~10 chars max for u32 value
+            if (value) |_| {
+                size += 4 + field.name.len + 10;
             }
         } else if (field.type == ?ARIAProps) {
             if (value) |aria| {
                 inline for (@typeInfo(ARIAProps).@"struct".fields) |aria_field| {
                     const aria_value = @field(aria, aria_field.name);
                     if (aria_value) |v| {
+                        // aria-* prefix (5 chars) + name + ="value"
                         size += 9 + aria_field.name.len + v.len;
                     }
                 }
@@ -448,6 +386,7 @@ fn estimatePropsSize(props: Props) usize {
                 inline for (@typeInfo(HTMXProps).@"struct".fields) |hx_field| {
                     const hx_value = @field(hx, hx_field.name);
                     if (hx_value) |v| {
+                        // hx-* prefix (3 chars) + name + ="value"
                         size += 7 + hx_field.name.len + v.len;
                     }
                 }
@@ -458,11 +397,26 @@ fn estimatePropsSize(props: Props) usize {
     return size;
 }
 
+/// HTML element builder that manages memory allocations automatically.
+///
+/// The builder tracks all string and element array allocations made during
+/// element construction. Call `deinit()` when done to free all tracked memory.
+///
+/// Example:
+///     var builder = ztl.Builder.init(allocator);
+///     defer builder.deinit();
+///
+///     const elem = try builder.div(.{
+///         .props = .{ .class = "container" },
+///         .content = .{ .text = "Hello" },
+///     });
 pub const Builder = struct {
     allocator: std.mem.Allocator,
     string_allocations: std.ArrayList([]u8),
     element_allocations: std.ArrayList([]Element),
 
+    /// Initialize a new builder with the given allocator.
+    /// The builder will track all allocations made during element construction.
     pub fn init(allocator: std.mem.Allocator) Builder {
         return Builder{
             .allocator = allocator,
@@ -471,6 +425,8 @@ pub const Builder = struct {
         };
     }
 
+    /// Free all tracked allocations.
+    /// After calling this, all elements created by this builder become invalid.
     pub fn deinit(self: *Builder) void {
         for (self.string_allocations.items) |allocation| {
             self.allocator.free(allocation);
@@ -483,12 +439,48 @@ pub const Builder = struct {
         self.element_allocations.deinit(self.allocator);
     }
 
-    pub fn text(self: *Builder, content: Str) Element {
-        const copy = self.allocator.dupe(u8, content) catch unreachable;
-        self.string_allocations.append(self.allocator, copy) catch unreachable;
+    /// Create a text node with automatic HTML escaping.
+    ///
+    /// Common HTML entities (<, >, &, ", ') are escaped to prevent XSS vulnerabilities.
+    /// The content string is copied and tracked for cleanup.
+    ///
+    /// Example:
+    ///     const text = try builder.text("<script>alert('xss')</script>");
+    ///     // Renders as: &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;
+    pub fn text(self: *Builder, content: Str) !Element {
+        const copy = try self.allocator.dupe(u8, content);
+        try self.string_allocations.append(self.allocator, copy);
         return Element{ .text = copy };
     }
 
+    /// Create pre-escaped HTML content without entity escaping.
+    ///
+    /// Use only for trusted sources like markdown renderers or sanitized HTML.
+    /// Does NOT escape HTML entities - content is rendered as-is.
+    ///
+    /// WARNING: Passing user input to this function creates XSS vulnerabilities.
+    ///
+    /// Example:
+    ///     const html = try builder.unsafeText("<em>already</em> escaped");
+    ///     // Renders as: <em>already</em> escaped
+    pub fn unsafeText(self: *Builder, content: Str) !Element {
+        const copy = try self.allocator.dupe(u8, content);
+        try self.string_allocations.append(self.allocator, copy);
+        return Element{ .unsafe_text = copy };
+    }
+
+    /// Render an element to a string.
+    ///
+    /// Allocates and returns a string containing the rendered HTML.
+    /// Caller owns the returned memory and must free it.
+    ///
+    /// Arguments:
+    ///     element: The element to render
+    ///     compact: If true, omit newlines and unnecessary whitespace
+    ///
+    /// Example:
+    ///     const html = try builder.renderToString(element, false);
+    ///     defer allocator.free(html);
     pub fn renderToString(self: *Builder, element: Element, compact: bool) ![]u8 {
         const estimated_size = estimateSize(element, compact);
         const initial_capacity = @max(estimated_size, INITIAL_BUFFER_SIZE);
@@ -498,133 +490,544 @@ pub const Builder = struct {
         return buf.toOwnedSlice(self.allocator);
     }
 
-    fn baseElementConfig(self: *Builder, tag: Str, props: ?Props, children: Children) BaseTag {
-        const tagCopy = self.allocator.dupe(u8, tag) catch unreachable;
-        self.string_allocations.append(self.allocator, tagCopy) catch unreachable;
-
+    fn baseElementConfig(self: *Builder, tag: Str, props: ?Props, children: Children) !BaseTag {
         var childrenCopy: ?[]const Element = null;
         if (children) |c| {
-            const elCopy = self.allocator.dupe(Element, c) catch unreachable;
-            self.element_allocations.append(self.allocator, elCopy) catch unreachable;
+            const elCopy = try self.allocator.dupe(Element, c);
+            try self.element_allocations.append(self.allocator, elCopy);
             childrenCopy = elCopy;
         }
 
-        return BaseTag{ .tag = tagCopy, .children = childrenCopy, .props = props };
+        return BaseTag{ .tag = tag, .children = childrenCopy, .props = props };
     }
 
-    pub fn html(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "html", opts.props, opts.children).el();
+    fn resolveChildren(self: *Builder, opts: ElementOpts) !?[]const Element {
+        if (opts.content) |c| {
+            return switch (c) {
+                .text => |txt| blk: {
+                    const slice = try self.allocator.alloc(Element, 1);
+                    slice[0] = .{ .static_text = txt };
+                    try self.element_allocations.append(self.allocator, slice);
+                    break :blk slice;
+                },
+                .elements => |els| els,
+            };
+        }
+        return opts.children;
     }
 
-    pub fn a(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "a", opts.props, opts.children).el();
+    pub fn html(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "html", opts.props, children)).el();
     }
 
-    pub fn b(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "b", opts.props, opts.children).el();
+    pub fn a(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "a", opts.props, children)).el();
     }
 
-    pub fn body(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "body", opts.props, opts.children).el();
+    pub fn b(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "b", opts.props, children)).el();
     }
 
-    pub fn div(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "div", opts.props, opts.children).el();
+    pub fn body(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "body", opts.props, children)).el();
     }
 
-    pub fn h1(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "h1", opts.props, opts.children).el();
+    pub fn div(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "div", opts.props, children)).el();
     }
 
-    pub fn h2(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "h2", opts.props, opts.children).el();
+    pub fn h1(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "h1", opts.props, children)).el();
     }
 
-    pub fn h3(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "h3", opts.props, opts.children).el();
+    pub fn h2(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "h2", opts.props, children)).el();
     }
 
-    pub fn h4(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "h4", opts.props, opts.children).el();
+    pub fn h3(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "h3", opts.props, children)).el();
     }
 
-    pub fn h5(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "h5", opts.props, opts.children).el();
+    pub fn h4(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "h4", opts.props, children)).el();
     }
 
-    pub fn h6(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "h6", opts.props, opts.children).el();
+    pub fn h5(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "h5", opts.props, children)).el();
     }
 
-    pub fn head(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "head", opts.props, opts.children).el();
+    pub fn h6(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "h6", opts.props, children)).el();
     }
 
-    pub fn hr(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "hr", opts.props, opts.children).el();
+    pub fn head(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "head", opts.props, children)).el();
     }
 
-    pub fn i(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "i", opts.props, opts.children).el();
+    pub fn hr(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "hr", opts.props, children)).el();
     }
 
-    pub fn img(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "img", opts.props, opts.children).el();
+    pub fn i(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "i", opts.props, children)).el();
     }
 
-    pub fn li(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "li", opts.props, opts.children).el();
+    pub fn img(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "img", opts.props, children)).el();
     }
 
-    pub fn link(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "link", opts.props, opts.children).el();
+    pub fn li(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "li", opts.props, children)).el();
     }
 
-    pub fn meta(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "meta", opts.props, opts.children).el();
+    pub fn link(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "link", opts.props, children)).el();
     }
 
-    pub fn nav(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "nav", opts.props, opts.children).el();
+    pub fn meta(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "meta", opts.props, children)).el();
     }
 
-    pub fn ol(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "ol", opts.props, opts.children).el();
+    pub fn nav(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "nav", opts.props, children)).el();
     }
 
-    pub fn p(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "p", opts.props, opts.children).el();
+    pub fn ol(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "ol", opts.props, children)).el();
     }
 
-    pub fn script(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "script", opts.props, opts.children).el();
+    pub fn p(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "p", opts.props, children)).el();
     }
 
-    pub fn span(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "span", opts.props, opts.children).el();
+    pub fn script(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "script", opts.props, children)).el();
     }
 
-    pub fn table(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "table", opts.props, opts.children).el();
+    pub fn span(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "span", opts.props, children)).el();
     }
 
-    pub fn td(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "td", opts.props, opts.children).el();
+    pub fn table(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "table", opts.props, children)).el();
     }
 
-    pub fn th(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "th", opts.props, opts.children).el();
+    pub fn td(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "td", opts.props, children)).el();
     }
 
-    pub fn title(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "title", opts.props, opts.children).el();
+    pub fn th(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "th", opts.props, children)).el();
     }
 
-    pub fn tr(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "tr", opts.props, opts.children).el();
+    pub fn title(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "title", opts.props, children)).el();
     }
 
-    pub fn ul(self: *Builder, opts: ElementOpts) Element {
-        return baseElementConfig(self, "ul", opts.props, opts.children).el();
+    pub fn tr(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "tr", opts.props, children)).el();
+    }
+
+    pub fn ul(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "ul", opts.props, children)).el();
+    }
+
+    pub fn article(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "article", opts.props, children)).el();
+    }
+
+    pub fn aside(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "aside", opts.props, children)).el();
+    }
+
+    pub fn blockquote(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "blockquote", opts.props, children)).el();
+    }
+
+    pub fn button(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "button", opts.props, children)).el();
+    }
+
+    pub fn cite(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "cite", opts.props, children)).el();
+    }
+
+    pub fn code(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "code", opts.props, children)).el();
+    }
+
+    pub fn fieldset(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "fieldset", opts.props, children)).el();
+    }
+
+    pub fn figcaption(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "figcaption", opts.props, children)).el();
+    }
+
+    pub fn figure(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "figure", opts.props, children)).el();
+    }
+
+    pub fn footer(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "footer", opts.props, children)).el();
+    }
+
+    pub fn form(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "form", opts.props, children)).el();
+    }
+
+    pub fn header(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "header", opts.props, children)).el();
+    }
+
+    pub fn input(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "input", opts.props, children)).el();
+    }
+
+    pub fn kbd(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "kbd", opts.props, children)).el();
+    }
+
+    pub fn label(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "label", opts.props, children)).el();
+    }
+
+    pub fn legend(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "legend", opts.props, children)).el();
+    }
+
+    pub fn main(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "main", opts.props, children)).el();
+    }
+
+    pub fn option(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "option", opts.props, children)).el();
+    }
+
+    pub fn pre(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "pre", opts.props, children)).el();
+    }
+
+    pub fn samp(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "samp", opts.props, children)).el();
+    }
+
+    pub fn section(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "section", opts.props, children)).el();
+    }
+
+    pub fn select(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "select", opts.props, children)).el();
+    }
+
+    pub fn textarea(self: *Builder, opts: ElementOpts) !Element {
+        const children = try self.resolveChildren(opts);
+        return (try baseElementConfig(self, "textarea", opts.props, children)).el();
+    }
+};
+
+/// Builder variant that panics on allocation failure instead of returning errors.
+///
+/// Suitable for server-side rendering where OOM is fatal anyway. Eliminates
+/// `try` from all element construction calls. Pair with an `ArenaAllocator`
+/// for the simplest memory model — the arena handles cleanup and the builder
+/// never needs `deinit`.
+///
+/// `renderToString` still returns `![]u8` so HTTP handlers can propagate errors.
+///
+/// Example:
+///     var arena = std.heap.ArenaAllocator.init(gpa);
+///     defer arena.deinit();
+///     var z = ztl.PanicBuilder.init(arena.allocator());
+///
+///     const page = z.html(.{
+///         .props = .{ .lang = "en-US" },
+///         .children = &.{
+///             z.body(.{ .children = &.{
+///                 z.h1(.{ .content = .{ .text = "Hello" } }),
+///                 z.p(.{ .content = .{ .text = "World" } }),
+///             } }),
+///         },
+///     });
+pub const PanicBuilder = struct {
+    inner: Builder,
+
+    pub fn init(allocator: std.mem.Allocator) PanicBuilder {
+        return .{ .inner = Builder.init(allocator) };
+    }
+
+    pub fn deinit(self: *PanicBuilder) void {
+        self.inner.deinit();
+    }
+
+    pub fn renderToString(self: *PanicBuilder, element: Element, compact: bool) ![]u8 {
+        return self.inner.renderToString(element, compact);
+    }
+
+    pub fn text(self: *PanicBuilder, content: Str) Element {
+        return self.inner.text(content) catch @panic("out of memory");
+    }
+
+    pub fn unsafeText(self: *PanicBuilder, content: Str) Element {
+        return self.inner.unsafeText(content) catch @panic("out of memory");
+    }
+
+    pub fn html(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.html(opts) catch @panic("out of memory");
+    }
+
+    pub fn a(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.a(opts) catch @panic("out of memory");
+    }
+
+    pub fn b(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.b(opts) catch @panic("out of memory");
+    }
+
+    pub fn body(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.body(opts) catch @panic("out of memory");
+    }
+
+    pub fn div(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.div(opts) catch @panic("out of memory");
+    }
+
+    pub fn h1(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.h1(opts) catch @panic("out of memory");
+    }
+
+    pub fn h2(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.h2(opts) catch @panic("out of memory");
+    }
+
+    pub fn h3(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.h3(opts) catch @panic("out of memory");
+    }
+
+    pub fn h4(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.h4(opts) catch @panic("out of memory");
+    }
+
+    pub fn h5(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.h5(opts) catch @panic("out of memory");
+    }
+
+    pub fn h6(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.h6(opts) catch @panic("out of memory");
+    }
+
+    pub fn head(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.head(opts) catch @panic("out of memory");
+    }
+
+    pub fn hr(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.hr(opts) catch @panic("out of memory");
+    }
+
+    pub fn i(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.i(opts) catch @panic("out of memory");
+    }
+
+    pub fn img(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.img(opts) catch @panic("out of memory");
+    }
+
+    pub fn li(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.li(opts) catch @panic("out of memory");
+    }
+
+    pub fn link(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.link(opts) catch @panic("out of memory");
+    }
+
+    pub fn meta(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.meta(opts) catch @panic("out of memory");
+    }
+
+    pub fn nav(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.nav(opts) catch @panic("out of memory");
+    }
+
+    pub fn ol(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.ol(opts) catch @panic("out of memory");
+    }
+
+    pub fn p(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.p(opts) catch @panic("out of memory");
+    }
+
+    pub fn script(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.script(opts) catch @panic("out of memory");
+    }
+
+    pub fn span(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.span(opts) catch @panic("out of memory");
+    }
+
+    pub fn table(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.table(opts) catch @panic("out of memory");
+    }
+
+    pub fn td(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.td(opts) catch @panic("out of memory");
+    }
+
+    pub fn th(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.th(opts) catch @panic("out of memory");
+    }
+
+    pub fn title(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.title(opts) catch @panic("out of memory");
+    }
+
+    pub fn tr(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.tr(opts) catch @panic("out of memory");
+    }
+
+    pub fn ul(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.ul(opts) catch @panic("out of memory");
+    }
+
+    pub fn article(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.article(opts) catch @panic("out of memory");
+    }
+
+    pub fn aside(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.aside(opts) catch @panic("out of memory");
+    }
+
+    pub fn blockquote(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.blockquote(opts) catch @panic("out of memory");
+    }
+
+    pub fn button(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.button(opts) catch @panic("out of memory");
+    }
+
+    pub fn cite(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.cite(opts) catch @panic("out of memory");
+    }
+
+    pub fn code(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.code(opts) catch @panic("out of memory");
+    }
+
+    pub fn fieldset(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.fieldset(opts) catch @panic("out of memory");
+    }
+
+    pub fn figcaption(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.figcaption(opts) catch @panic("out of memory");
+    }
+
+    pub fn figure(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.figure(opts) catch @panic("out of memory");
+    }
+
+    pub fn footer(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.footer(opts) catch @panic("out of memory");
+    }
+
+    pub fn form(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.form(opts) catch @panic("out of memory");
+    }
+
+    pub fn header(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.header(opts) catch @panic("out of memory");
+    }
+
+    pub fn input(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.input(opts) catch @panic("out of memory");
+    }
+
+    pub fn kbd(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.kbd(opts) catch @panic("out of memory");
+    }
+
+    pub fn label(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.label(opts) catch @panic("out of memory");
+    }
+
+    pub fn legend(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.legend(opts) catch @panic("out of memory");
+    }
+
+    pub fn main(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.main(opts) catch @panic("out of memory");
+    }
+
+    pub fn option(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.option(opts) catch @panic("out of memory");
+    }
+
+    pub fn pre(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.pre(opts) catch @panic("out of memory");
+    }
+
+    pub fn samp(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.samp(opts) catch @panic("out of memory");
+    }
+
+    pub fn section(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.section(opts) catch @panic("out of memory");
+    }
+
+    pub fn select(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.select(opts) catch @panic("out of memory");
+    }
+
+    pub fn textarea(self: *PanicBuilder, opts: ElementOpts) Element {
+        return self.inner.textarea(opts) catch @panic("out of memory");
     }
 };

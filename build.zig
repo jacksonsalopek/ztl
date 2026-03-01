@@ -69,4 +69,56 @@ pub fn build(b: *std.Build) void {
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    // Benchmark executable - use main.zig as root and pass benchmark flag
+    // Create html_core as a shared module
+    const html_core_module = b.createModule(.{
+        .root_source_file = b.path("src/html_core.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+
+    // Add ztl and ztlc modules for rendering benchmarks
+    const ztl_module = b.createModule(.{
+        .root_source_file = b.path("src/ztl.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .imports = &.{
+            .{ .name = "html_core.zig", .module = html_core_module },
+        },
+    });
+    
+    const ztlc_module = b.createModule(.{
+        .root_source_file = b.path("src/ztlc.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .imports = &.{
+            .{ .name = "html_core.zig", .module = html_core_module },
+        },
+    });
+
+    const benchmark_root = b.createModule(.{
+        .root_source_file = b.path("src/benchmarks/root.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .imports = &.{
+            .{ .name = "ztl", .module = ztl_module },
+            .{ .name = "ztlc", .module = ztlc_module },
+        },
+    });
+
+    const benchmark_exe = b.addExecutable(.{
+        .name = "benchmark",
+        .root_module = benchmark_root,
+    });
+
+    b.installArtifact(benchmark_exe);
+
+    const benchmark_run = b.addRunArtifact(benchmark_exe);
+    if (b.args) |args| {
+        benchmark_run.addArgs(args);
+    }
+
+    const benchmark_step = b.step("benchmark", "Run performance benchmarks");
+    benchmark_step.dependOn(&benchmark_run.step);
 }
