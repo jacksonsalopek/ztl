@@ -24,10 +24,10 @@ pub const Element = union(enum) {
         };
     }
 
-    pub fn render(self: Element, buf: *std.ArrayList(u8), compact: bool) !void {
+    pub fn render(self: Element, buf: *std.ArrayList(u8), allocator: std.mem.Allocator, compact: bool) !void {
         switch (self) {
-            .base => |base| try base.render(buf, compact),
-            .text => |text| try buf.appendSlice(text),
+            .base => |base| try base.render(buf, allocator, compact),
+            .text => |text| try buf.appendSlice(allocator, text),
         }
     }
 };
@@ -36,16 +36,16 @@ pub const Element = union(enum) {
 pub const Children = ?[]const Element;
 
 // Helper function for writing attributes to reduce repeated code
-fn writeAttr(buf: *std.ArrayList(u8), name: []const u8, value: []const u8) !void {
+fn writeAttr(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, name: []const u8, value: []const u8) !void {
     // Pre-allocate space for the entire attribute to avoid multiple allocations
     const total_length = 1 + name.len + 2 + value.len + 1; // " " + name + "=\"" + value + "\""
-    try buf.ensureUnusedCapacity(total_length);
+    try buf.ensureUnusedCapacity(allocator, total_length);
 
-    try buf.appendSlice(" ");
-    try buf.appendSlice(name);
-    try buf.appendSlice("=\"");
-    try buf.appendSlice(value);
-    try buf.appendSlice("\"");
+    try buf.appendSlice(allocator, " ");
+    try buf.appendSlice(allocator, name);
+    try buf.appendSlice(allocator, "=\"");
+    try buf.appendSlice(allocator, value);
+    try buf.appendSlice(allocator, "\"");
 }
 
 pub const ARIAProps = struct {
@@ -64,7 +64,7 @@ pub const ARIAProps = struct {
     role: ?Str = null,
     selected: ?Str = null,
 
-    pub fn render(self: ARIAProps, buf: *std.ArrayList(u8)) !void {
+    pub fn render(self: ARIAProps, buf: *std.ArrayList(u8), allocator: std.mem.Allocator) !void {
         // Define a list of property-value pairs to avoid repeated code
         const props = [_]struct { name: []const u8, value: ?Str }{
             .{ .name = "aria-activedescendent", .value = self.activedescendant },
@@ -86,7 +86,7 @@ pub const ARIAProps = struct {
         // Loop through properties instead of repeated conditionals
         for (props) |prop| {
             if (prop.value) |value| {
-                try writeAttr(buf, prop.name, value);
+                try writeAttr(buf, allocator, prop.name, value);
             }
         }
     }
@@ -111,7 +111,7 @@ pub const HTMXProps = struct {
     target: ?Str = null,
     vals: ?Str = null,
 
-    pub fn render(self: HTMXProps, buf: *std.ArrayList(u8)) !void {
+    pub fn render(self: HTMXProps, buf: *std.ArrayList(u8), allocator: std.mem.Allocator) !void {
         // Define a list of property-value pairs to avoid repeated code
         const props = [_]struct { name: []const u8, value: ?Str }{
             .{ .name = "hx-boost", .value = self.boost },
@@ -135,7 +135,7 @@ pub const HTMXProps = struct {
         // Loop through properties instead of repeated conditionals
         for (props) |prop| {
             if (prop.value) |value| {
-                try writeAttr(buf, prop.name, value);
+                try writeAttr(buf, allocator, prop.name, value);
             }
         }
     }
@@ -170,13 +170,13 @@ pub const Props = struct {
     // @TODO: convert to u16
     width: ?Str = null,
 
-    pub fn render(self: Props, buf: *std.ArrayList(u8)) !void {
+    pub fn render(self: Props, buf: *std.ArrayList(u8), allocator: std.mem.Allocator) !void {
         // Specialized properties
         if (self.aria) |aria| {
-            try aria.render(buf);
+            try aria.render(buf, allocator);
         }
         if (self.hx) |hx| {
-            try hx.render(buf);
+            try hx.render(buf, allocator);
         }
 
         // Regular properties using a data-driven approach
@@ -205,7 +205,7 @@ pub const Props = struct {
         // Loop through properties instead of repeated conditionals
         for (props) |prop| {
             if (prop.value) |value| {
-                try writeAttr(buf, prop.name, value);
+                try writeAttr(buf, allocator, prop.name, value);
             }
         }
     }
@@ -261,49 +261,49 @@ pub const BaseTag = struct {
     children: Children,
     props: ?Props = null,
 
-    pub fn render(self: BaseTag, buf: *std.ArrayList(u8), compact: bool) anyerror!void {
+    pub fn render(self: BaseTag, buf: *std.ArrayList(u8), allocator: std.mem.Allocator, compact: bool) anyerror!void {
         // Special case for HTML tag
         if (std.mem.eql(u8, self.tag, "html")) {
-            try buf.appendSlice("<!DOCTYPE html>\n<html");
+            try buf.appendSlice(allocator, "<!DOCTYPE html>\n<html");
         } else {
             // Try to use the comptime tag cache
             if (getTagFromCache(self.tag)) |cached| {
-                try buf.appendSlice(cached.open_prefix);
+                try buf.appendSlice(allocator, cached.open_prefix);
             } else {
                 // Fall back for uncached tags
-                try buf.appendSlice("<");
-                try buf.appendSlice(self.tag);
+                try buf.appendSlice(allocator, "<");
+                try buf.appendSlice(allocator, self.tag);
             }
         }
 
         // Add properties
         if (self.props) |props| {
-            try props.render(buf);
+            try props.render(buf, allocator);
         }
 
-        try buf.appendSlice(">");
+        try buf.appendSlice(allocator, ">");
         if (!compact) {
-            try buf.appendSlice("\n");
+            try buf.appendSlice(allocator, "\n");
         }
 
         // Render children
         if (self.children) |children| {
             for (children) |child| {
-                try child.render(buf, compact);
+                try child.render(buf, allocator, compact);
             }
         }
 
         // Close tag
         if (getTagFromCache(self.tag)) |cached| {
-            try buf.appendSlice(cached.close_tag);
+            try buf.appendSlice(allocator, cached.close_tag);
         } else {
-            try buf.appendSlice("</");
-            try buf.appendSlice(self.tag);
-            try buf.appendSlice(">");
+            try buf.appendSlice(allocator, "</");
+            try buf.appendSlice(allocator, self.tag);
+            try buf.appendSlice(allocator, ">");
         }
 
         if (!compact) {
-            try buf.appendSlice("\n");
+            try buf.appendSlice(allocator, "\n");
         }
     }
 
@@ -312,7 +312,7 @@ pub const BaseTag = struct {
     }
 };
 
-pub const ZTLBuilder = struct {
+pub const Builder = struct {
     allocator: std.mem.Allocator,
     // Track string allocations (for text content and tag names)
     string_allocations: std.ArrayList([]u8),
@@ -321,33 +321,33 @@ pub const ZTLBuilder = struct {
     // Flag to indicate if we should copy string literals
     copy_literals: bool,
 
-    pub fn init(allocator: std.mem.Allocator) !ZTLBuilder {
-        return ZTLBuilder{
+    pub fn init(allocator: std.mem.Allocator) !Builder {
+        return Builder{
             .allocator = allocator,
-            .string_allocations = std.ArrayList([]u8).init(allocator),
-            .element_allocations = std.ArrayList([]Element).init(allocator),
+            .string_allocations = std.ArrayList([]u8){},
+            .element_allocations = std.ArrayList([]Element){},
             .copy_literals = false, // Default to not copying literals
         };
     }
 
-    pub fn deinit(self: *ZTLBuilder) void {
+    pub fn deinit(self: *Builder) void {
         // Free all string allocations (text content and tag names)
         for (self.string_allocations.items) |allocation| {
             self.allocator.free(allocation);
         }
-        self.string_allocations.deinit();
+        self.string_allocations.deinit(self.allocator);
 
         // Free all element array allocations
         for (self.element_allocations.items) |allocation| {
             self.allocator.free(allocation);
         }
-        self.element_allocations.deinit();
+        self.element_allocations.deinit(self.allocator);
     }
 
-    pub fn text(self: *ZTLBuilder, content: Str) Element {
+    pub fn text(self: *Builder, content: Str) Element {
         if (self.copy_literals) {
             const copy = self.allocator.dupe(u8, content) catch unreachable;
-            self.string_allocations.append(copy) catch unreachable;
+            self.string_allocations.append(self.allocator, copy) catch unreachable;
             return Element{ .text = copy };
         } else {
             // Use the string literal directly for static content
@@ -355,13 +355,13 @@ pub const ZTLBuilder = struct {
         }
     }
 
-    fn baseElementConfig(self: *ZTLBuilder, tag: Str, props: ?Props, children: Children) BaseTag {
+    fn baseElementConfig(self: *Builder, tag: Str, props: ?Props, children: Children) BaseTag {
         var tagToUse = tag;
 
         // Only duplicate the tag if we're configured to copy literals
         if (self.copy_literals) {
             const tagCopy = self.allocator.dupe(u8, tag) catch unreachable;
-            self.string_allocations.append(tagCopy) catch unreachable;
+            self.string_allocations.append(self.allocator, tagCopy) catch unreachable;
             tagToUse = tagCopy;
         }
 
@@ -369,7 +369,7 @@ pub const ZTLBuilder = struct {
         var childrenCopy: ?[]const Element = null;
         if (children) |c| {
             const elCopy = self.allocator.dupe(Element, c) catch unreachable;
-            self.element_allocations.append(elCopy) catch unreachable;
+            self.element_allocations.append(self.allocator, elCopy) catch unreachable;
             childrenCopy = elCopy;
         }
 
@@ -377,134 +377,125 @@ pub const ZTLBuilder = struct {
     }
 
     // Pre-allocate the output buffer for more efficient rendering
-    pub fn renderToString(self: *ZTLBuilder, root: Element, compact: bool) ![]u8 {
+    pub fn renderToString(self: *Builder, root: Element, compact: bool) ![]u8 {
         var buf = try std.ArrayList(u8).initCapacity(self.allocator, INITIAL_BUFFER_SIZE);
-        try root.render(&buf, compact);
-        return buf.toOwnedSlice();
+        try root.render(&buf, self.allocator, compact);
+        return buf.toOwnedSlice(self.allocator);
     }
 
-    // Generate the tag methods using a comptime function to reduce code duplication
-    pub usingnamespace genTagMethods();
+    pub fn html(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("html", props, children).el();
+    }
+
+    pub fn a(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("a", props, children).el();
+    }
+
+    pub fn b(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("b", props, children).el();
+    }
+
+    pub fn body(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("body", props, children).el();
+    }
+
+    pub fn div(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("div", props, children).el();
+    }
+
+    pub fn h1(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("h1", props, children).el();
+    }
+
+    pub fn h2(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("h2", props, children).el();
+    }
+
+    pub fn h3(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("h3", props, children).el();
+    }
+
+    pub fn h4(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("h4", props, children).el();
+    }
+
+    pub fn h5(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("h5", props, children).el();
+    }
+
+    pub fn h6(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("h6", props, children).el();
+    }
+
+    pub fn head(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("head", props, children).el();
+    }
+
+    pub fn hr(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("hr", props, children).el();
+    }
+
+    pub fn i(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("i", props, children).el();
+    }
+
+    pub fn img(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("img", props, children).el();
+    }
+
+    pub fn li(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("li", props, children).el();
+    }
+
+    pub fn link(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("link", props, children).el();
+    }
+
+    pub fn meta(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("meta", props, children).el();
+    }
+
+    pub fn nav(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("nav", props, children).el();
+    }
+
+    pub fn ol(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("ol", props, children).el();
+    }
+
+    pub fn p(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("p", props, children).el();
+    }
+
+    pub fn script(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("script", props, children).el();
+    }
+
+    pub fn span(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("span", props, children).el();
+    }
+
+    pub fn table(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("table", props, children).el();
+    }
+
+    pub fn td(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("td", props, children).el();
+    }
+
+    pub fn th(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("th", props, children).el();
+    }
+
+    pub fn title(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("title", props, children).el();
+    }
+
+    pub fn tr(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("tr", props, children).el();
+    }
+
+    pub fn ul(self: *Builder, props: ?Props, children: Children) Element {
+        return self.baseElementConfig("ul", props, children).el();
+    }
 };
-
-// Generate tag methods at compile time to reduce code duplication
-fn genTagMethods() type {
-    return struct {
-        // Define all HTML tag methods here
-        pub fn html(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("html", props, children).el();
-        }
-
-        pub fn a(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("a", props, children).el();
-        }
-
-        pub fn b(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("b", props, children).el();
-        }
-
-        pub fn body(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("body", props, children).el();
-        }
-
-        pub fn div(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("div", props, children).el();
-        }
-
-        pub fn h1(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("h1", props, children).el();
-        }
-
-        pub fn h2(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("h2", props, children).el();
-        }
-
-        pub fn h3(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("h3", props, children).el();
-        }
-
-        pub fn h4(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("h4", props, children).el();
-        }
-
-        pub fn h5(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("h5", props, children).el();
-        }
-
-        pub fn h6(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("h6", props, children).el();
-        }
-
-        pub fn head(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("head", props, children).el();
-        }
-
-        pub fn hr(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("hr", props, children).el();
-        }
-
-        pub fn i(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("i", props, children).el();
-        }
-
-        pub fn img(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("img", props, children).el();
-        }
-
-        pub fn li(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("li", props, children).el();
-        }
-
-        pub fn link(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("link", props, children).el();
-        }
-
-        pub fn meta(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("meta", props, children).el();
-        }
-
-        pub fn nav(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("nav", props, children).el();
-        }
-
-        pub fn ol(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("ol", props, children).el();
-        }
-
-        pub fn p(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("p", props, children).el();
-        }
-
-        pub fn script(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("script", props, children).el();
-        }
-
-        pub fn span(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("span", props, children).el();
-        }
-
-        pub fn table(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("table", props, children).el();
-        }
-
-        pub fn td(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("td", props, children).el();
-        }
-
-        pub fn th(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("th", props, children).el();
-        }
-
-        pub fn title(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("title", props, children).el();
-        }
-
-        pub fn tr(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("tr", props, children).el();
-        }
-
-        pub fn ul(self: *ZTLBuilder, props: ?Props, children: Children) Element {
-            return self.baseElementConfig("ul", props, children).el();
-        }
-    };
-}
